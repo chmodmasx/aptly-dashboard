@@ -17,16 +17,16 @@
 - Real connection state in the UI.
 - Initial API contract-test harness.
 
-## M2 — Reference deployment
+## M2 — Reference deployment documentation
 
-- Add optional `deploy/compose.yaml`.
+- Add optional `deploy/compose.yaml` only when backed by a responsibly chosen external Aptly image.
 - Keep it Docker Compose and Portainer friendly.
-- Project-owned Aptly 1.6.3 image only if needed.
-- Persistent named volumes.
-- Separate published-repository HTTP service.
-- Safe local API binding.
-- Remote/reverse-proxy documentation.
-- CI smoke test for the reference stack.
+- Do **not** publish or maintain our own Aptly image.
+- Persistent volumes.
+- Safe administrative API exposure.
+- Nginx Proxy Manager/reverse-proxy example.
+- Remote HTTPS/authentication documentation.
+- CI smoke test for the documented deployment where practical.
 
 ## M3 — Real Aptly read path
 
@@ -58,12 +58,15 @@
 - Capability fallbacks for API differences where worthwhile.
 - Document unsupported/partial features clearly.
 
-## M7 — Distribution
+## M7 — Application updater and distribution
 
 - GitHub Actions CI.
-- Tauri application releases.
+- Signed Tauri application releases.
+- Tauri updater plugin.
+- `latest.json` in GitHub Releases.
+- Settings → **Check for updates**.
+- Optional automatic background checks; user-controlled installation.
 - Linux packaging first.
-- GHCR reference-server image releases if the project owns one.
 - Other desktop platforms after behavior is validated.
 
 ## Later

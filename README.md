@@ -17,7 +17,7 @@ The user may run Aptly however they prefer:
 - on another machine;
 - behind a reverse proxy.
 
-This repository will also provide an **optional reference Docker Compose deployment** for users who want a ready-made stack. That Compose file is a deployment recipe, not a runtime dependency of the desktop application.
+This repository may also provide an **optional reference Docker Compose deployment** for users who want a ready-made topology. That Compose file is a deployment recipe, not a runtime dependency of the desktop application, and this project does **not** maintain its own Aptly image.
 
 ## Initial compatibility target
 
@@ -38,7 +38,7 @@ See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
 
 ## Planned connection model
 
-The Tauri/Rust layer will own network communication with Aptly. The React frontend will call typed Tauri commands rather than talking directly to Aptly from the webview.
+The Tauri/Rust layer owns network communication with Aptly. The React frontend calls typed Tauri commands rather than talking directly to Aptly from the webview.
 
 This gives us:
 
@@ -47,6 +47,14 @@ This gives us:
 - safer credential handling;
 - version/capability checks in one place;
 - the same behavior for local and remote Aptly servers.
+
+## Application updates
+
+Packaged releases will use Tauri's signed updater support with artifacts published in GitHub Releases.
+
+Settings will include a **Check for updates** action, current/latest version information, release notes, download progress and explicit install/restart confirmation.
+
+See [`docs/UPDATES.md`](docs/UPDATES.md).
 
 ## Development
 
@@ -78,6 +86,7 @@ npm run dev
 - [Architecture](docs/ARCHITECTURE.md)
 - [Compatibility](docs/COMPATIBILITY.md)
 - [Deployment strategy](docs/DEPLOYMENT.md)
+- [Application updates](docs/UPDATES.md)
 - [Roadmap](docs/ROADMAP.md)
 
 ## Design origin

@@ -2,11 +2,11 @@
 
 ## Principle
 
-Aptly Dashboard does not require Docker.
+Aptly Dashboard does not require Docker and does not ship or manage its own Aptly distribution.
 
-It only requires access to a compatible Aptly REST API.
+It only requires access to a **compatible Aptly REST API**.
 
-Docker Compose is offered as one convenient way to deploy such an API.
+Docker Compose is offered as one convenient deployment recipe, not as part of the desktop application's runtime.
 
 ## Supported deployment styles
 
@@ -19,71 +19,77 @@ The product should remain agnostic to where Aptly runs:
 5. Podman or another OCI runtime;
 6. remote server or VM.
 
-The desktop UI should behave the same once the API profile is configured.
+The desktop UI behaves the same once the API profile is configured.
+
+## Aptly ownership
+
+This project maintains **Aptly Dashboard**, not Aptly.
+
+Therefore we do not:
+
+- fork Aptly;
+- publish a modified Aptly build;
+- maintain an `aptly-dashboard-aptly` container image;
+- silently patch the Aptly API;
+- require a particular container runtime.
+
+Compatibility is defined against upstream Aptly versions and API capabilities.
+
+Initial target: **Aptly 1.6.3**.
 
 ## Reference Compose
 
-The repository will provide an optional `deploy/compose.yaml`.
+The repository may provide an optional `deploy/compose.yaml` for users who want Docker or Portainer.
 
-It should use plain Compose features so the same file can be:
+The Compose file should be understood as a reference topology:
 
-- started with `docker compose up -d`;
-- imported into Portainer as a stack;
-- adapted to an existing reverse proxy;
-- used as documentation for users who prefer their own tooling.
+```text
+compatible Aptly container
+       │
+       ├─ REST API
+       └─ persistent Aptly data
 
-The reference stack should not require the dashboard application to be running.
+optional repository HTTP server / user's existing proxy
+```
+
+It must not create a new Aptly distribution maintained by this project.
+
+Because Aptly does not currently provide a clearly maintained Docker Official Image for every release, the reference deployment must document exactly which external image it was tested with. The dashboard's support promise remains tied to the **reported Aptly version/API**, not to that image.
+
+If there is no external image we can responsibly recommend for the supported Aptly version, we should publish deployment guidance instead of pretending a questionable image is an official dependency.
 
 ## Compose design rules
 
-- no `container_name` unless there is a compelling reason;
 - no Docker socket mount;
 - no privileged containers;
-- explicit image versions, never floating `latest`;
+- explicit image tag/digest in examples;
 - persistent named volumes;
-- healthchecks;
-- `restart: unless-stopped` where appropriate;
+- healthchecks where the selected image supports them;
 - environment-variable overrides for ports and paths;
-- sensible localhost-safe defaults for the administrative API;
-- repository-serving service separated from Aptly API service.
+- administrative API not exposed publicly by default;
+- published repository and administrative API treated separately.
 
-## Image strategy
+## Portainer
 
-The project may publish a small Aptly image to GHCR if no maintained upstream image matches the supported Aptly version and deployment requirements.
+Portainer is a first-class use case for deployment documentation.
 
-That image is an **optional server artifact**, not something bundled or controlled by Tauri.
+Avoid Compose tricks that require local preprocessing. A user should be able to paste/import the YAML, set the documented variables, and deploy it.
 
-Suggested naming:
-
-```text
-ghcr.io/chmodmasx/aptly-dashboard-aptly:<aptly-version>-<image-revision>
-```
-
-For example:
-
-```text
-ghcr.io/chmodmasx/aptly-dashboard-aptly:1.6.3-1
-```
-
-The tag should make the Aptly version obvious.
+The dashboard itself does not need Portainer credentials and does not manage the Portainer stack.
 
 ## Local deployment
 
-Safe initial example:
+For a local-only API:
 
 ```text
-Aptly API:
-127.0.0.1:<port> -> aptly:8080
-
-Published repository:
-0.0.0.0:<repo-port> -> repo-server:80
+127.0.0.1:<api-port> → Aptly API
 ```
 
-The administrative API is localhost-only while the published repository can intentionally be reachable from the LAN.
+The public repository endpoint is separate and can be exposed to the LAN or Internet as appropriate.
 
 ## Remote deployment
 
-A raw Aptly API should not simply be published to the Internet.
+A raw Aptly API should not be exposed directly to the Internet. Aptly's own documentation notes that its REST API has no built-in authentication/protection and recommends putting it behind an HTTP proxy that adds HTTPS and authentication.
 
 Recommended shape:
 
@@ -98,15 +104,9 @@ reverse proxy / gateway
 Aptly API
 ```
 
-The dashboard connection profile should support credentials used by that proxy.
+The dashboard connection profile supports the credentials used by that proxy.
 
-The public APT repository URL can be independent from the administrative API URL.
-
-## Portainer
-
-The Portainer use case is a first-class deployment target for the reference Compose file.
-
-Avoid Compose tricks that require local preprocessing. Environment variables should be documented so a user can paste the YAML into Portainer, configure values in the stack UI, and deploy.
+The public APT repository URL remains independent from the administrative API URL.
 
 ## What the app does not do
 
@@ -117,6 +117,7 @@ The desktop application will not:
 - assume Docker is installed;
 - require access to the Docker daemon;
 - manage Portainer;
-- manage the reverse proxy.
+- manage a reverse proxy;
+- publish or maintain a custom Aptly image.
 
-This separation keeps the client useful in more environments and avoids coupling Aptly administration to one container runtime.
+This separation keeps the client useful in more environments and keeps responsibility clear: Aptly upstream owns Aptly; this project owns the dashboard.
