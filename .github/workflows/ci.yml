@@ -34,3 +34,23 @@ jobs:
         run: cargo test --manifest-path backend/Cargo.toml
       - name: Cargo check
         run: cargo check --manifest-path backend/Cargo.toml
+
+  container:
+    name: Dashboard container
+    runs-on: ubuntu-24.04
+    needs: [frontend, backend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build container image
+        run: docker build --tag aptly-dashboard:ci .
+      - name: Smoke-test dashboard health
+        run: |
+          docker run -d --name aptly-dashboard-ci -p 127.0.0.1:18080:8080 aptly-dashboard:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/api/dashboard/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs aptly-dashboard-ci
+          exit 1

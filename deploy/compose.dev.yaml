@@ -1,0 +1,6 @@
+services:
+  dashboard:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: aptly-dashboard:local

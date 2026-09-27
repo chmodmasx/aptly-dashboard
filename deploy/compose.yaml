@@ -1,0 +1,47 @@
+name: aptly-dashboard
+
+services:
+  dashboard:
+    image: ${DASHBOARD_IMAGE:?Set DASHBOARD_IMAGE to an Aptly Dashboard image}
+    restart: unless-stopped
+    environment:
+      DASHBOARD_BIND: 0.0.0.0:8080
+      DASHBOARD_STATIC_DIR: /app/dist
+      APTLY_URL: ${APTLY_URL:-http://aptly:8080}
+      APTLY_PROFILE_NAME: ${APTLY_PROFILE_NAME:-Aptly del stack}
+      APTLY_AUTH_MODE: ${APTLY_AUTH_MODE:-none}
+      APTLY_AUTH_USERNAME: ${APTLY_AUTH_USERNAME:-}
+      APTLY_AUTH_PASSWORD: ${APTLY_AUTH_PASSWORD:-}
+      APTLY_AUTH_TOKEN: ${APTLY_AUTH_TOKEN:-}
+      APTLY_AUTH_HEADER_NAME: ${APTLY_AUTH_HEADER_NAME:-}
+      APTLY_AUTH_HEADER_VALUE: ${APTLY_AUTH_HEADER_VALUE:-}
+    volumes:
+      - dashboard-data:/data
+      - backup-data:/backups
+    ports:
+      - "${DASHBOARD_HOST_BIND:-127.0.0.1}:${DASHBOARD_HOST_PORT:-8080}:8080"
+    networks:
+      - internal
+      - proxy
+    depends_on:
+      - aptly
+
+  aptly:
+    image: ${APTLY_IMAGE:?Set APTLY_IMAGE to a compatible Aptly image}
+    restart: unless-stopped
+    volumes:
+      - aptly-data:${APTLY_DATA_PATH:-/opt/aptly}
+    networks:
+      - internal
+
+volumes:
+  aptly-data:
+  dashboard-data:
+  backup-data:
+
+networks:
+  internal:
+    internal: true
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-nginx-proxy-manager_default}
