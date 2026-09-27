@@ -38,6 +38,12 @@ export interface DashboardConfig {
   expectedAptlyVersion: string
 }
 
+export interface PublicEndpoint {
+  hostname: string
+  prefix: string
+  enabled: boolean
+}
+
 export async function getDashboardConfig() {
   return requestJson<DashboardConfig>("/api/dashboard/config")
 }
@@ -50,6 +56,37 @@ export async function testAptlyConnection() {
   return requestJson<ConnectionTestResult>("/api/dashboard/aptly/test", {
     method: "POST",
   })
+}
+
+export async function listPublicEndpoints() {
+  return requestJson<PublicEndpoint[]>("/api/dashboard/endpoints")
+}
+
+export async function savePublicEndpoint(hostname: string, prefix: string, enabled = true) {
+  return requestJson<PublicEndpoint>(`/api/dashboard/endpoints/${encodeURIComponent(hostname)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ prefix, enabled }),
+  })
+}
+
+export async function deletePublicEndpoint(hostname: string) {
+  const response = await fetch(`/api/dashboard/endpoints/${encodeURIComponent(hostname)}`, {
+    method: "DELETE",
+    headers: { Accept: "application/json" },
+  })
+
+  if (!response.ok && response.status !== 404) {
+    const payload = await response.json().catch(() => null)
+    throw parseConnectionError(payload || {
+      kind: "http",
+      message: `El Dashboard respondió con HTTP ${response.status}.`,
+      operation: "delete endpoint",
+      httpStatus: response.status,
+    })
+  }
 }
 
 async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {

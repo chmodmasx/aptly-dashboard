@@ -5,6 +5,7 @@ import {
   CircleGauge,
   Database,
   FileClock,
+  Globe2,
   HardDrive,
   ListChecks,
   Package,
@@ -16,7 +17,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { ConnectionTestResult } from "@/lib/aptly"
 
-export type Section = "Dashboard" | "Repositorios" | "Paquetes" | "Snapshots" | "Publicaciones" | "Mirrors" | "Tareas" | "Almacenamiento" | "Configuración"
+export type Section = "Dashboard" | "Repositorios" | "Paquetes" | "Snapshots" | "Publicaciones" | "Mirrors" | "Tareas" | "Almacenamiento" | "Endpoints" | "Configuración"
 
 const items: Array<{ name: Section; icon: typeof CircleGauge }> = [
   { name: "Dashboard", icon: CircleGauge },
@@ -27,6 +28,7 @@ const items: Array<{ name: Section; icon: typeof CircleGauge }> = [
   { name: "Mirrors", icon: Archive },
   { name: "Tareas", icon: ListChecks },
   { name: "Almacenamiento", icon: HardDrive },
+  { name: "Endpoints", icon: Globe2 },
   { name: "Configuración", icon: Settings },
 ]
 

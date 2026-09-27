@@ -7,6 +7,7 @@ import { RepositoriesTable } from "@/components/repositories-table"
 import { TaskCard } from "@/components/task-card"
 import { DebugPanel } from "@/components/debug-panel"
 import { SettingsPage } from "@/components/settings-page"
+import { PublicEndpointsPage } from "@/components/public-endpoints-page"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -162,6 +163,10 @@ function MainContent({
         <StoragePanel />
       </Page>
     )
+  }
+
+  if (section === "Endpoints") {
+    return <PublicEndpointsPage />
   }
 
   return <SettingsPage connection={connection} onConnected={onConnectionChange} />
