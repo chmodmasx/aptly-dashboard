@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SupraLINUX Repository Manager",
+  "version": "0.1.0",
+  "identifier": "com.supralinux.aptly",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "SupraLINUX Repository Manager",
+        "width": 1400,
+        "height": 918,
+        "minWidth": 980,
+        "minHeight": 680,
+        "center": true,
+        "visible": false,
+        "resizable": true,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}
