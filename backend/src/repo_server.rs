@@ -111,7 +111,7 @@ fn safe_relative_path(value: &str) -> Option<PathBuf> {
         if segment.is_empty() {
             continue;
         }
-        if segment == "." || segment == ".." || segment.contains('\\\\') {
+        if segment == "." || segment == ".." || segment.contains('\\') {
             return None;
         }
         path.push(segment);
