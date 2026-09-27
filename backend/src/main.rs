@@ -1,16 +1,18 @@
 mod aptly;
 mod config;
+mod state;
 
 use aptly::{test_connection, ConnectionError, ConnectionTestResult};
 use axum::{
-    extract::State,
+    extract::{Path as AxumPath, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use config::{AppConfig, PublicConfig};
 use serde::Serialize;
+use state::{DashboardState, EndpointUpdate, PublicEndpoint, StateError, StateStore};
 use std::{path::PathBuf, sync::Arc};
 use tower_http::{
     services::{ServeDir, ServeFile},
@@ -22,6 +24,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Clone)]
 struct AppState {
     config: Arc<AppConfig>,
+    store: Arc<StateStore>,
 }
 
 #[derive(Serialize)]
@@ -29,6 +32,21 @@ struct AppState {
 struct HealthResponse {
     status: &'static str,
     version: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadyResponse {
+    status: &'static str,
+    aptly_version: Option<String>,
+    compatibility: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ErrorResponse {
+    kind: String,
+    message: String,
 }
 
 #[tokio::main]
@@ -44,9 +62,13 @@ async fn main() {
     let bind = config.bind.clone();
     let static_dir = PathBuf::from(&config.static_dir);
     let index = static_dir.join("index.html");
+    let store = StateStore::load(&config.data_dir)
+        .await
+        .unwrap_or_else(|error| panic!("no se pudo cargar el estado persistente: {error}"));
 
     let state = AppState {
         config: Arc::new(config),
+        store: Arc::new(store),
     };
 
     let static_service = ServeDir::new(&static_dir)
@@ -54,9 +76,16 @@ async fn main() {
 
     let app = Router::new()
         .route("/api/dashboard/health", get(health))
+        .route("/api/dashboard/ready", get(ready))
         .route("/api/dashboard/config", get(public_config))
+        .route("/api/dashboard/state", get(dashboard_state))
         .route("/api/dashboard/aptly/status", get(aptly_status))
         .route("/api/dashboard/aptly/test", post(aptly_status))
+        .route("/api/dashboard/endpoints", get(list_endpoints))
+        .route(
+            "/api/dashboard/endpoints/{hostname}",
+            put(upsert_endpoint).delete(delete_endpoint),
+        )
         .fallback_service(static_service)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -80,8 +109,45 @@ async fn health() -> Json<HealthResponse> {
     })
 }
 
+async fn ready(State(state): State<AppState>) -> impl IntoResponse {
+    match test_connection(&state.config.profile).await {
+        Ok(result)
+            if result.compatibility == "supported" && result.healthy && result.ready =>
+        {
+            (
+                StatusCode::OK,
+                Json(ReadyResponse {
+                    status: "ready",
+                    aptly_version: Some(result.version),
+                    compatibility: Some(result.compatibility),
+                }),
+            )
+        }
+        Ok(result) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ReadyResponse {
+                status: "not_ready",
+                aptly_version: Some(result.version),
+                compatibility: Some(result.compatibility),
+            }),
+        ),
+        Err(_) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ReadyResponse {
+                status: "not_ready",
+                aptly_version: None,
+                compatibility: None,
+            }),
+        ),
+    }
+}
+
 async fn public_config(State(state): State<AppState>) -> Json<PublicConfig> {
     Json(state.config.public())
+}
+
+async fn dashboard_state(State(state): State<AppState>) -> Json<DashboardState> {
+    Json(state.store.snapshot().await)
 }
 
 async fn aptly_status(
@@ -93,6 +159,40 @@ async fn aptly_status(
         .map_err(ApiError)
 }
 
+async fn list_endpoints(State(state): State<AppState>) -> Json<Vec<PublicEndpoint>> {
+    Json(state.store.endpoints().await)
+}
+
+async fn upsert_endpoint(
+    State(state): State<AppState>,
+    AxumPath(hostname): AxumPath<String>,
+    Json(update): Json<EndpointUpdate>,
+) -> Result<Json<PublicEndpoint>, StateApiError> {
+    state
+        .store
+        .upsert_endpoint(&hostname, update)
+        .await
+        .map(Json)
+        .map_err(StateApiError)
+}
+
+async fn delete_endpoint(
+    State(state): State<AppState>,
+    AxumPath(hostname): AxumPath<String>,
+) -> Result<StatusCode, StateApiError> {
+    let removed = state
+        .store
+        .delete_endpoint(&hostname)
+        .await
+        .map_err(StateApiError)?;
+
+    Ok(if removed {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    })
+}
+
 struct ApiError(ConnectionError);
 
 impl IntoResponse for ApiError {
@@ -102,6 +202,26 @@ impl IntoResponse for ApiError {
             _ => StatusCode::BAD_GATEWAY,
         };
         (status, Json(self.0)).into_response()
+    }
+}
+
+struct StateApiError(StateError);
+
+impl IntoResponse for StateApiError {
+    fn into_response(self) -> axum::response::Response {
+        let status = if self.0.kind == "validation" {
+            StatusCode::BAD_REQUEST
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        };
+        (
+            status,
+            Json(ErrorResponse {
+                kind: self.0.kind.to_string(),
+                message: self.0.message,
+            }),
+        )
+            .into_response()
     }
 }
 

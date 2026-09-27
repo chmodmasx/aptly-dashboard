@@ -6,6 +6,7 @@ use std::env;
 pub struct AppConfig {
     pub bind: String,
     pub static_dir: String,
+    pub data_dir: String,
     pub profile: ConnectionProfile,
 }
 
@@ -54,6 +55,7 @@ impl AppConfig {
         Self {
             bind: env_var("DASHBOARD_BIND", "0.0.0.0:8080"),
             static_dir: env_var("DASHBOARD_STATIC_DIR", "dist"),
+            data_dir: env_var("DASHBOARD_DATA_DIR", "/data"),
             profile: ConnectionProfile {
                 name: env_var("APTLY_PROFILE_NAME", "Aptly del stack"),
                 base_url: env_var("APTLY_URL", "http://aptly:8080"),
