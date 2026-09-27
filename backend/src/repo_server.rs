@@ -1,8 +1,8 @@
 use crate::state::{read_state_file, PublicEndpoint};
 use axum::{
     body::Body,
-    extract::{Host, OriginalUri, State},
-    http::{Method, Request, StatusCode},
+    extract::State,
+    http::{header::HOST, Method, Request, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
     Router,
@@ -55,14 +55,17 @@ async fn health() -> &'static str {
 
 async fn repo_request(
     State(state): State<RepoState>,
-    Host(host): Host,
-    OriginalUri(uri): OriginalUri,
     request: Request<Body>,
 ) -> Response {
     if request.method() != Method::GET && request.method() != Method::HEAD {
         return StatusCode::METHOD_NOT_ALLOWED.into_response();
     }
 
+    let host = match request.headers().get(HOST).and_then(|value| value.to_str().ok()) {
+        Some(value) => value.to_string(),
+        None => return StatusCode::BAD_REQUEST.into_response(),
+    };
+    let request_path = request.uri().path().to_string();
     let hostname = strip_port(&host);
 
     let snapshot = match read_state_file(state.data_dir.as_ref()).await {
@@ -82,7 +85,7 @@ async fn repo_request(
         None => return StatusCode::NOT_FOUND.into_response(),
     };
 
-    let relative_path = match safe_relative_path(uri.path()) {
+    let relative_path = match safe_relative_path(&request_path) {
         Some(path) if !path.as_os_str().is_empty() => path,
         _ => return StatusCode::NOT_FOUND.into_response(),
     };
