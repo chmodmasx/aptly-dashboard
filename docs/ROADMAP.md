@@ -8,14 +8,28 @@
 
 ## M1 — Connection and compatibility foundation
 
+Status: **in progress**
+
+Implemented baseline:
+
 - Rust-side HTTP client.
-- Connection profiles.
+- Connection profile UI.
 - `GET /api/version` handshake.
 - Official support target: Aptly 1.6.3.
-- Capability model and feature gates.
-- Timeouts, structured errors and reconnect behavior.
-- Real connection state in the UI.
-- Initial API contract-test harness.
+- Initial capability probes.
+- HTTP Basic, Bearer and custom-header authentication.
+- Timeouts and structured errors.
+- Real connection state in Settings/sidebar.
+- Rust unit tests for URL/version handling.
+- GitHub Actions frontend + Rust checks.
+
+Remaining:
+
+- secure OS-backed credential persistence;
+- reconnect/session restoration;
+- broader contract-test harness against disposable Aptly 1.6.3;
+- decide which capabilities are mandatory versus optional;
+- harden proxy/TLS diagnostics.
 
 ## M2 — Reference deployment documentation
 

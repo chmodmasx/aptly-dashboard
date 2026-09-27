@@ -1,6 +1,5 @@
 import {
   Archive,
-  Box,
   Boxes,
   ChevronsUpDown,
   CircleGauge,
@@ -15,6 +14,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import type { ConnectionTestResult } from "@/lib/aptly"
 
 export type Section = "Dashboard" | "Repositorios" | "Paquetes" | "Snapshots" | "Publicaciones" | "Mirrors" | "Tareas" | "Almacenamiento" | "Configuración"
 
@@ -30,7 +30,19 @@ const items: Array<{ name: Section; icon: typeof CircleGauge }> = [
   { name: "Configuración", icon: Settings },
 ]
 
-export function AppSidebar({ section, setSection, onQuickCreate }: { section: Section; setSection: (s: Section) => void; onQuickCreate: () => void }) {
+export function AppSidebar({
+  section,
+  setSection,
+  onQuickCreate,
+  connection,
+}: {
+  section: Section
+  setSection: (s: Section) => void
+  onQuickCreate: () => void
+  connection: ConnectionTestResult | null
+}) {
+  const host = connection ? connectionHost(connection.normalizedUrl) : "Configurar servidor"
+
   return (
     <aside className="sidebar">
       <div className="p-2">
@@ -39,8 +51,8 @@ export function AppSidebar({ section, setSection, onQuickCreate }: { section: Se
             <Boxes className="size-4" />
           </div>
           <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-sm font-semibold">SupraLINUX</div>
-            <div className="truncate text-xs text-[hsl(var(--muted-foreground))]">Aptly Repository Manager</div>
+            <div className="truncate text-sm font-semibold">Aptly Dashboard</div>
+            <div className="truncate text-xs text-[hsl(var(--muted-foreground))]">Repository Manager</div>
           </div>
           <ChevronsUpDown className="size-4 opacity-60" />
         </button>
@@ -73,15 +85,26 @@ export function AppSidebar({ section, setSection, onQuickCreate }: { section: Se
       </nav>
 
       <div className="border-t p-3">
-        <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
-          <span className="size-2 rounded-full bg-emerald-500" />
+        <button
+          onClick={() => setSection("Configuración")}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-[hsl(var(--sidebar-accent))]"
+        >
+          <span className={`size-2 rounded-full ${connection ? "bg-emerald-500" : "bg-zinc-400"}`} />
           <div className="min-w-0 flex-1">
-            <div className="text-xs font-medium">Aptly conectado</div>
-            <div className="truncate text-[11px] text-[hsl(var(--muted-foreground))]">repo.supralinux.com</div>
+            <div className="text-xs font-medium">{connection ? "Aptly conectado" : "Aptly sin conexión"}</div>
+            <div className="truncate text-[11px] text-[hsl(var(--muted-foreground))]">{host}</div>
           </div>
-          <span className="text-[10px] text-[hsl(var(--muted-foreground))]">v1.6</span>
-        </div>
+          <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{connection ? `v${connection.version}` : "—"}</span>
+        </button>
       </div>
     </aside>
   )
+}
+
+function connectionHost(value: string) {
+  try {
+    return new URL(value).host
+  } catch {
+    return value
+  }
 }
