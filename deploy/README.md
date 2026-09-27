@@ -24,7 +24,9 @@ Copy deploy/compose.yaml into a Portainer Stack and define the values from .env.
 
 For Nginx Proxy Manager, set PROXY_NETWORK to the existing Docker network shared with NPM. The default is nginx-proxy-manager_default.
 
-The Dashboard container joins that network. Aptly does not: its REST API remains only on the private internal network.
+The Dashboard container joins that network. Aptly does not: its REST API remains only on the stack backend network and has no published host port.
+
+The backend network intentionally keeps normal outbound connectivity. Aptly needs Internet egress to mirror upstream repositories; privacy is achieved by not publishing Aptly ports and by not joining Aptly to the reverse-proxy network.
 
 ## Local source build
 

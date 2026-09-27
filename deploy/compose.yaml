@@ -21,7 +21,7 @@ services:
     ports:
       - "${DASHBOARD_HOST_BIND:-127.0.0.1}:${DASHBOARD_HOST_PORT:-8080}:8080"
     networks:
-      - internal
+      - backend
       - proxy
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/dashboard/health"]
@@ -58,7 +58,7 @@ services:
     volumes:
       - aptly-data:${APTLY_DATA_PATH:-/opt/aptly}
     networks:
-      - internal
+      - backend
 
 volumes:
   aptly-data:
@@ -66,8 +66,9 @@ volumes:
   backup-data:
 
 networks:
-  internal:
-    internal: true
+  # Private to the stack from an ingress perspective, but with normal outbound
+  # connectivity so Aptly can mirror upstream repositories.
+  backend:
   proxy:
     external: true
     name: ${PROXY_NETWORK:-nginx-proxy-manager_default}
