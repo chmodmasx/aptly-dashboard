@@ -4,6 +4,29 @@ Desktop repository-management application built with Tauri 2 for Aptly.
 
 The current codebase is the UI baseline. It uses React, TypeScript, Vite and shadcn-style components, following the desktop conventions of [`agmmnn/tauri-ui`](https://github.com/agmmnn/tauri-ui) and its `dashboard-01` starter approach.
 
+## Product model
+
+Aptly Dashboard is a **client for an Aptly REST API**. It does not require, own or automatically start Docker.
+
+The user may run Aptly however they prefer:
+
+- installed directly on Linux;
+- as a systemd service;
+- in Docker or Podman;
+- from Portainer;
+- on another machine;
+- behind a reverse proxy.
+
+This repository will also provide an **optional reference Docker Compose deployment** for users who want a ready-made stack. That Compose file is a deployment recipe, not a runtime dependency of the desktop application.
+
+## Initial compatibility target
+
+The first supported Aptly version is **1.6.3**.
+
+The app verifies the server with `GET /api/version` before enabling normal operations. Other versions are not considered supported until they are covered by our compatibility tests.
+
+See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
+
 ## Current state
 
 - functional desktop UI with mock data;
@@ -13,16 +36,17 @@ The current codebase is the UI baseline. It uses React, TypeScript, Vite and sha
 - development debug panel (`Ctrl/Cmd + D`);
 - no real Aptly connection yet.
 
-## Planned runtime model
+## Planned connection model
 
-The default mode will manage its own local Aptly stack through Docker Compose. The end-user infrastructure requirement is intended to be **Docker + Compose v2**, not a host Aptly installation.
+The Tauri/Rust layer will own network communication with Aptly. The React frontend will call typed Tauri commands rather than talking directly to Aptly from the webview.
 
-The desktop app will orchestrate Docker from its Rust/Tauri backend and use Aptly's REST API for repository operations. Docker containers will not receive the host Docker socket.
+This gives us:
 
-See:
-
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- [`docs/ROADMAP.md`](docs/ROADMAP.md)
+- no browser CORS dependency;
+- centralized timeouts and error handling;
+- safer credential handling;
+- version/capability checks in one place;
+- the same behavior for local and remote Aptly servers.
 
 ## Development
 
@@ -48,6 +72,13 @@ npm run dev
 - shadcn-style components
 - Lucide icons
 - Recharts
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Compatibility](docs/COMPATIBILITY.md)
+- [Deployment strategy](docs/DEPLOYMENT.md)
+- [Roadmap](docs/ROADMAP.md)
 
 ## Design origin
 

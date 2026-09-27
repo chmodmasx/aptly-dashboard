@@ -1,218 +1,237 @@
-# Architecture plan
+# Architecture
 
-## Product goal
+## Product boundary
 
-`aptly-dashboard` is a Tauri desktop application for managing Aptly repositories through a graphical interface. The default deployment model is a **managed local Aptly stack**: the application provisions and controls its own Docker Compose stack while the frontend talks to Aptly through its REST API.
+`aptly-dashboard` is a desktop client for Aptly. It is **not** a Docker manager and does not own the lifecycle of the Aptly server.
 
-The project should also leave room for an **external Aptly mode** later, for users who already run Aptly elsewhere.
+The dashboard should work with any deployment that exposes a compatible Aptly REST API, regardless of whether Aptly runs:
 
-## Runtime requirements
+- directly on a host;
+- under systemd;
+- in Docker/Podman;
+- in Portainer;
+- in a VM;
+- on a remote server.
 
-For the managed mode, the only infrastructure prerequisite should be:
-
-- Docker Engine or Docker Desktop;
-- Docker Compose v2 (`docker compose`);
-- permission for the current user to talk to the Docker daemon.
-
-Node, Rust, Aptly, nginx, GPG and other build/runtime dependencies should not be required from the end user once packaged releases exist.
+The project may ship deployment examples, including Docker Compose, but those remain optional.
 
 ## High-level design
 
 ```text
-Tauri desktop app
-  ├─ React/shadcn UI
-  ├─ Aptly REST client
-  └─ Rust orchestration layer
-       ├─ Docker detection / health
-       ├─ docker compose lifecycle
-       ├─ fixed administrative actions
-       └─ local settings / secrets integration
-
-Docker Compose project: aptly-dashboard
-  ├─ aptly
-  │    ├─ aptly 1.6.3+
-  │    ├─ REST API :8080
-  │    └─ persistent Aptly data
-  └─ repo-server
-       └─ serves Aptly's published repository tree read-only
+React / shadcn UI
+        │
+        │ typed Tauri commands
+        ▼
+Tauri / Rust backend
+        │
+        ├─ connection profiles
+        ├─ credentials / secret handling
+        ├─ HTTP timeouts and TLS policy
+        ├─ Aptly version + capability checks
+        └─ Aptly API client
+                 │
+                 │ HTTP(S)
+                 ▼
+        Compatible Aptly REST API
+                 │
+                 └─ repositories / packages / mirrors /
+                    snapshots / publish / tasks / storage
 ```
 
-## Docker ownership model
+## Why the Rust backend owns HTTP
 
-The application should **not mount `/var/run/docker.sock` into any container**. The Tauri process already runs on the host, so Docker should be controlled from Rust using the installed `docker` CLI with a narrow, explicit command surface.
+The webview should not call Aptly directly.
 
-The frontend must never execute arbitrary Docker commands. It should call Tauri commands such as:
+Using Rust as the transport layer avoids depending on browser CORS behavior and gives us a single location for:
 
-- `docker_status`
-- `stack_status`
-- `stack_start`
-- `stack_stop`
-- `stack_restart`
-- `stack_logs`
-- `stack_pull`
-- `stack_upgrade`
-- `stack_backup`
-- `stack_restore`
+- URL validation;
+- TLS handling;
+- authentication;
+- timeouts;
+- retries where safe;
+- response parsing;
+- Aptly version checks;
+- compatibility feature gates;
+- structured error messages.
 
-The Rust layer should build argument arrays directly instead of assembling shell strings.
+Credentials must not be stored in browser `localStorage`.
 
-## Managed Compose stack
+## Connection profiles
 
-### `aptly`
+A profile should contain non-secret metadata such as:
 
-One process per container. The Aptly container should run the API directly, for example:
+- profile name;
+- Aptly API base URL;
+- optional public repository URL;
+- authentication mode;
+- TLS verification policy;
+- user-facing notes.
+
+Potential authentication modes:
+
+- none;
+- HTTP Basic;
+- Bearer token;
+- custom header.
+
+Aptly itself does not provide application authentication for its REST API, so remote deployments should place it behind a suitable authenticated reverse proxy.
+
+Secrets should eventually use an OS-backed secure store from the Tauri side.
+
+## Connection handshake
+
+Every new connection performs a handshake before normal features are enabled.
+
+Minimum sequence:
+
+1. normalize and validate the configured URL;
+2. request `GET /api/version`;
+3. parse the reported Aptly version;
+4. compare it against the compatibility policy;
+5. probe required endpoints/capabilities;
+6. return a structured connection status to the UI.
+
+Example version response from Aptly:
+
+```json
+{"Version":"1.6.3"}
+```
+
+The version is necessary but not sufficient. Feature availability should also be represented as capabilities.
+
+## Capability model
+
+The UI should not scatter version comparisons throughout components.
+
+The backend should expose a capability object, for example:
 
 ```text
-aptly api serve -listen=:8080
+AptlyCapabilities
+├─ repository_list
+├─ repository_edit
+├─ package_upload
+├─ mirror_edit
+├─ snapshot_diff
+├─ storage_usage
+├─ gpg_key_api
+├─ task_api
+└─ multi_signing_keys
 ```
 
-It owns the writable Aptly data volume and configuration.
+Pages and actions use capabilities, not hard-coded `if version >= ...` checks.
 
-The image should be maintained by this project rather than depending on the older all-in-one `aptly-dev/docker-aptly` image. Production releases should use a versioned image from GHCR, built by GitHub Actions and pinned by version (and eventually digest). Development may keep a local Dockerfile build path.
+This lets us support patch releases and later Aptly versions without turning the frontend into a version matrix.
 
-### `repo-server`
+## API boundary
 
-A separate small nginx container serves only the published Apt repository tree from the Aptly data volume as read-only.
-
-This avoids running nginx, supervisor and Aptly API in one container and keeps each service's responsibility clear.
-
-## Networking and security defaults
-
-The Aptly REST API is unauthenticated by default, so managed mode must keep it private:
-
-- API bind: `127.0.0.1` only;
-- default host API port: configurable, initially `18080`;
-- repository HTTP server: localhost by default, initially `18081`;
-- LAN/public exposure must be an explicit user action;
-- no Docker socket inside the stack;
-- no arbitrary shell exposed to the frontend.
-
-The application should detect port conflicts before starting the stack.
-
-## Persistence
-
-Initial implementation should use Docker named volumes because they avoid UID/GID and cross-platform bind-mount problems.
-
-Suggested volumes:
-
-- `aptly-data` — database, package pool, snapshots and published tree;
-- `aptly-gpg` — signing keyring, if separated from the main root.
-
-Backups should be a first-class feature. Before any migration that can alter persistent state, the application should offer or automatically create a backup archive.
-
-A later advanced setting can support a user-selected bind-mount directory.
-
-## GPG signing
-
-Publishing and signing need their own onboarding flow:
-
-1. create a new signing key, or
-2. import an existing private key.
-
-Key material must live in persistent storage. Passphrases must not be written to Compose files or plaintext application settings. When secret storage is implemented, use the operating system's credential/keyring facilities through the Tauri side.
-
-Repository creation, mirrors and snapshots should remain usable before a signing key exists; publishing should clearly indicate when signing configuration is incomplete.
-
-## Aptly API boundary
-
-Normal repository operations should go through Aptly's REST API:
+Normal repository operations use Aptly REST endpoints whenever available:
 
 - repositories;
-- packages/uploads;
+- package search/upload/import/remove;
 - mirrors;
 - snapshots and diffs;
 - publishing;
 - tasks;
-- storage/health where available.
+- GPG key operations;
+- storage information.
 
-Docker orchestration is only for lifecycle and infrastructure. We should not implement repository management by running Aptly CLI commands when an API endpoint exists.
+The desktop application should not SSH into the server or run Aptly CLI commands remotely.
 
-A small number of setup/recovery operations may require `docker exec`; those must be fixed backend actions, not free-form commands.
+If a useful Aptly operation is CLI-only, it should initially be marked unsupported rather than introducing a generic remote-shell path. An explicit extension mechanism can be designed later if there is a strong use case.
 
-## Application lifecycle
+## Error model
 
-Closing the GUI should **not** stop Aptly by default. A repository server may need to remain available without the dashboard open.
-
-Default behavior:
-
-- opening the app: detect Docker and the managed stack;
-- if the stack exists and is stopped: show a Start action;
-- if it does not exist: show first-run setup;
-- closing the app: leave containers running;
-- explicit Stop control: stops services but keeps all data;
-- destructive Reset: separate flow with typed confirmation and backup warning.
-
-## First-run flow
-
-1. Check Docker executable.
-2. Check Docker daemon access.
-3. Check Compose v2.
-4. Check available ports and disk space.
-5. Select managed mode (default) or, later, external mode.
-6. Pull the pinned container images.
-7. Create volumes and start the stack.
-8. Wait for Aptly health/API readiness.
-9. Offer GPG signing setup.
-10. Enter the dashboard.
-
-Errors should be shown in normal language with an expandable technical detail/log section.
-
-## Versioning and upgrades
-
-Three versions should be treated separately:
-
-- desktop application version;
-- managed-stack schema/config version;
-- Aptly image/version.
-
-The Compose/image version must not silently follow `latest`. Upgrades should be explicit and reproducible.
-
-Before a state-affecting upgrade:
-
-1. verify current health;
-2. create backup;
-3. pull the target image;
-4. stop only what is required;
-5. start the new stack;
-6. verify API and repository availability;
-7. preserve a documented rollback path.
-
-## Development layout
-
-Proposed repository layout:
+Errors returned to React should be structured:
 
 ```text
-aptly-dashboard/
-├── src/                    # React UI
-├── src-tauri/              # Rust/Tauri backend
-├── docker/
-│   ├── compose.yaml
-│   ├── aptly/
-│   │   ├── Dockerfile
-│   │   └── aptly.conf
-│   └── nginx/
-│       └── default.conf
-├── docs/
-│   ├── ARCHITECTURE.md
-│   └── ROADMAP.md
-└── .github/workflows/
-    ├── ci.yml
-    ├── release.yml
-    └── container.yml
+kind
+message
+operation
+http_status?
+aptly_error?
+retryable
+technical_details?
 ```
 
-The Docker files can be bundled into the Tauri application as resources for packaged builds. During development, the repository copies are the source of truth.
+The normal UI shows a concise explanation. Technical details are available on demand.
+
+Network failures, authentication failures, incompatible versions and Aptly operation errors must be distinguishable.
+
+## Security defaults
+
+For a local Aptly deployment, binding the raw API to localhost is acceptable.
+
+For remote access:
+
+- use HTTPS;
+- do not expose an unauthenticated raw Aptly API directly to the Internet;
+- place the API behind a reverse proxy or gateway with authentication;
+- keep repository HTTP exposure separate from administrative API exposure.
+
+The dashboard should support authenticated reverse proxies without requiring a special Aptly build.
+
+## Optional deployment assets
+
+The repository will provide a reference deployment under `deploy/`.
+
+Proposed structure:
+
+```text
+deploy/
+├── compose.yaml
+├── .env.example
+├── aptly/
+│   └── aptly.conf
+├── repo-server/
+│   └── default.conf
+└── README.md
+```
+
+The Compose stack is designed to be:
+
+- usable with `docker compose`;
+- pasteable/importable into Portainer with minimal changes;
+- based on explicit image tags;
+- persistent through named volumes;
+- free of host Docker-socket mounts;
+- configurable through environment variables.
+
+The dashboard itself does not start, stop or inspect this stack.
+
+## Published repository serving
+
+The administrative Aptly API and the published APT repository are separate concerns.
+
+A reference Compose deployment may contain:
+
+```text
+aptly
+  └─ REST API
+
+repo-server
+  └─ read-only HTTP serving of the published repository tree
+```
+
+Users with an existing nginx/Caddy/Traefik setup may ignore the included repository server and publish through their own infrastructure.
+
+## Compatibility boundary
+
+Initial official target:
+
+- Aptly 1.6.3
+
+See `COMPATIBILITY.md` for the policy.
+
+When adding support for another version, CI should run API contract tests against that version before the matrix is expanded.
 
 ## Deliberately deferred
 
-Do not implement these in the first Docker milestone:
+- Docker lifecycle management from Tauri;
+- remote shell/SSH execution;
+- Kubernetes orchestration;
+- automatic DNS/reverse-proxy setup;
+- multi-user server component;
+- arbitrary command execution;
+- automatic public Internet exposure.
 
-- remote Docker hosts;
-- Kubernetes;
-- multiple managed Aptly instances;
-- public Internet exposure wizard;
-- automatic reverse-proxy/DNS management;
-- S3/GCS/JFrog publishing UI;
-- multi-user authentication.
-
-The first milestone is one reliable local managed instance with persistent data, safe lifecycle controls and full Aptly API integration.
+The first integration milestone is a reliable client connection to one compatible Aptly REST API.

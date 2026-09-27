@@ -6,24 +6,36 @@
 - shadcn/`dashboard-01` visual direction via `tauri-ui` conventions.
 - Mock data and navigation for Aptly concepts.
 
-## M1 — Managed Docker foundation
+## M1 — Connection and compatibility foundation
 
-- Detect Docker Engine/Desktop and Compose v2.
-- Add project-owned Aptly image and Compose stack.
+- Rust-side HTTP client.
+- Connection profiles.
+- `GET /api/version` handshake.
+- Official support target: Aptly 1.6.3.
+- Capability model and feature gates.
+- Timeouts, structured errors and reconnect behavior.
+- Real connection state in the UI.
+- Initial API contract-test harness.
+
+## M2 — Reference deployment
+
+- Add optional `deploy/compose.yaml`.
+- Keep it Docker Compose and Portainer friendly.
+- Project-owned Aptly 1.6.3 image only if needed.
 - Persistent named volumes.
-- Separate repository HTTP server.
-- Rust-side lifecycle commands with no arbitrary shell.
-- Health/readiness checks.
-- First-run setup screen.
+- Separate published-repository HTTP service.
+- Safe local API binding.
+- Remote/reverse-proxy documentation.
+- CI smoke test for the reference stack.
 
-## M2 — Real Aptly read path
+## M3 — Real Aptly read path
 
-- API client and connection state.
 - Dashboard metrics from Aptly.
 - List repositories, packages, mirrors, snapshots, publications and tasks.
-- Error handling and task progress.
+- Storage information.
+- Read-only diagnostic views.
 
-## M3 — Real Aptly write path
+## M4 — Real Aptly write path
 
 - Create/edit/delete repositories.
 - Package upload/import/remove.
@@ -32,32 +44,31 @@
 - Publish/update/switch/drop.
 - Destructive-action confirmations.
 
-## M4 — Signing and publication
+## M5 — Signing and publication
 
-- Create/import GPG signing key.
-- Secure passphrase handling.
+- GPG key discovery/import/create flows as supported.
+- Secure credential/passphrase handling on the client side.
 - Signed publication workflow.
-- Repository endpoint configuration.
 - Explicit testing → stable promotion policy support.
 
-## M5 — Backup, restore and upgrades
+## M6 — Compatibility expansion
 
-- Backup/export managed state.
-- Restore flow.
-- Pinned image upgrades.
-- Pre-upgrade backup and post-upgrade validation.
-- Rollback documentation and recovery tools.
+- Add additional Aptly releases to CI contract matrix.
+- Expand support only when tests pass.
+- Capability fallbacks for API differences where worthwhile.
+- Document unsupported/partial features clearly.
 
-## M6 — Distribution
+## M7 — Distribution
 
 - GitHub Actions CI.
-- GHCR image builds for amd64/arm64.
 - Tauri application releases.
-- Linux packaging first; other desktop platforms after managed Docker behavior is validated.
+- Linux packaging first.
+- GHCR reference-server image releases if the project owns one.
+- Other desktop platforms after behavior is validated.
 
 ## Later
 
-- External Aptly server mode.
-- Remote storage backends.
-- Multiple instances/profiles.
-- Optional LAN/public repository exposure helpers.
+- Multiple connection profiles.
+- External storage backends in the UI.
+- Advanced authenticated proxy integrations.
+- Multiple Aptly instances open at once.
