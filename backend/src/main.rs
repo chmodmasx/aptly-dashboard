@@ -8,7 +8,7 @@ use axum::{
     extract::{Path as AxumPath, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use config::{AppConfig, PublicConfig};
