@@ -84,3 +84,56 @@ jobs:
           curl -fsS -H 'Host: repo.example.test' \
             http://127.0.0.1:18081/dists/stable/Release \
             | grep -F 'Release smoke test'
+
+      - name: Integration-test external Aptly 1.6.3 provider
+        run: |
+          docker network create aptly-integration
+          docker volume create aptly-integration-data
+          docker volume create dashboard-integration-data
+
+          docker run -d \
+            --name aptly-integration \
+            --network aptly-integration \
+            --network-alias aptly \
+            -p 127.0.0.1:18082:8080 \
+            -v aptly-integration-data:/opt/aptly \
+            urpylka/aptly:1.6.3
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18082/api/version > /tmp/aptly-version.json; then
+              break
+            fi
+            sleep 1
+          done
+
+          python3 - <<'PY'
+          import json
+          with open("/tmp/aptly-version.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+          assert payload["Version"] == "1.6.3", payload
+          PY
+
+          docker run -d \
+            --name aptly-dashboard-integration \
+            --network aptly-integration \
+            -p 127.0.0.1:18083:8080 \
+            -e APTLY_URL=http://aptly:8080 \
+            -v dashboard-integration-data:/data \
+            aptly-dashboard:ci
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18083/api/dashboard/aptly/status > /tmp/dashboard-aptly.json; then
+              break
+            fi
+            sleep 1
+          done
+
+          python3 - <<'PY'
+          import json
+          with open("/tmp/dashboard-aptly.json", "r", encoding="utf-8") as handle:
+              payload = json.load(handle)
+          assert payload["version"] == "1.6.3", payload
+          assert payload["compatibility"] == "supported", payload
+          assert payload["healthy"] is True, payload
+          assert payload["ready"] is True, payload
+          PY
