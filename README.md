@@ -1,96 +1,109 @@
 # Aptly Dashboard
 
-Desktop repository-management application built with Tauri 2 for Aptly.
+Web-based repository manager for Aptly.
 
-The current codebase is the UI baseline. It uses React, TypeScript, Vite and shadcn-style components, following the desktop conventions of [`agmmnn/tauri-ui`](https://github.com/agmmnn/tauri-ui) and its `dashboard-01` starter approach.
+## Target product model
 
-## Product model
+The primary deployment is a Docker Compose / Portainer stack:
 
-Aptly Dashboard is a **client for an Aptly REST API**. It does not require, own or automatically start Docker.
+~~~
+aptly-dashboard stack
+├── dashboard
+├── aptly
+└── repo-server
+~~~
 
-The user may run Aptly however they prefer:
+The project maintains **Aptly Dashboard**, not Aptly.
 
-- installed directly on Linux;
-- as a systemd service;
-- in Docker or Podman;
-- from Portainer;
-- on another machine;
-- behind a reverse proxy.
+- dashboard uses our image.
+- aptly uses an image selected by the operator.
+- the Dashboard verifies the Aptly API version/capabilities before enabling normal operations.
+- the first supported Aptly target is **1.6.3**.
+- repo-server serves published APT content and can expose many repositories through different hostnames.
 
-This repository may also provide an **optional reference Docker Compose deployment** for users who want a ready-made topology. That Compose file is a deployment recipe, not a runtime dependency of the desktop application, and this project does **not** maintain its own Aptly image.
+The operator chooses when to pull/redeploy newer images. There is no in-app self-updater in the Docker-first product.
 
-## Initial compatibility target
+## One Aptly, many repositories
 
-The first supported Aptly version is **1.6.3**.
+A single Aptly instance can manage many local repositories and many published prefixes/distributions.
 
-The app verifies the server with `GET /api/version` before enabling normal operations. Other versions are not considered supported until they are covered by our compatibility tests.
+Example:
 
-See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md).
+~~~
+Aptly
+├── supralinux
+├── colegio
+└── miapp
+~~~
+
+The same repo-server can expose them as:
+
+~~~
+repo.supralinux.com  → supralinux
+repo.colegio.com     → colegio
+packages.miapp.com   → miapp
+~~~
+
+An external reverse proxy such as Nginx Proxy Manager remains responsible for DNS/HTTPS and forwards those hostnames to the same repo-server.
+
+## Persistent data
+
+Container images are replaceable. User data is not.
+
+The stack will keep persistent state outside the containers:
+
+~~~
+aptly-data
+dashboard-data
+backup-data
+~~~
+
+Updating the Dashboard does not replace Aptly data.
+
+When a stack release changes the supported Aptly version, the upgrade flow must create a pre-upgrade backup before starting the new Aptly image.
+
+There is no supported manual downgrade path after a successful Aptly migration. Failed-upgrade recovery uses the pre-upgrade backup.
+
+See docs/UPGRADES.md.
+
+## Aptly image policy
+
+Aptly Dashboard does not publish or maintain a custom Aptly image.
+
+The Compose deployment will accept an operator-selected Aptly image and pin it by tag/digest. The stack checks the reported version through GET /api/version.
+
+A mismatched or unverified Aptly version is not treated as supported merely because the container starts.
+
+See docs/COMPATIBILITY.md.
 
 ## Current state
 
-- functional desktop UI with mock data;
-- Dashboard, Repositories, Packages, Snapshots, Publications, Mirrors, Tasks, Storage and Settings views;
-- light/dark theme;
-- quick-create UI (`Ctrl/Cmd + N`);
-- development debug panel (`Ctrl/Cmd + D`);
-- no real Aptly connection yet.
+The repository currently contains the original React/Tauri prototype plus the first Rust Aptly connection core.
 
-## Planned connection model
+That code is a transition baseline. The next implementation milestone moves the Rust Aptly client behind a web backend and makes the Docker/web stack the primary runtime.
 
-The Tauri/Rust layer owns network communication with Aptly. The React frontend calls typed Tauri commands rather than talking directly to Aptly from the webview.
+## Target stack
 
-This gives us:
-
-- no browser CORS dependency;
-- centralized timeouts and error handling;
-- safer credential handling;
-- version/capability checks in one place;
-- the same behavior for local and remote Aptly servers.
-
-## Application updates
-
-Packaged releases will use Tauri's signed updater support with artifacts published in GitHub Releases.
-
-Settings will include a **Check for updates** action, current/latest version information, release notes, download progress and explicit install/restart confirmation.
-
-See [`docs/UPDATES.md`](docs/UPDATES.md).
-
-## Development
-
-```bash
-npm install
-npm run tauri dev
-```
-
-Frontend only:
-
-```bash
-npm install
-npm run dev
-```
-
-## Stack
-
-- Tauri 2
 - React 19
 - TypeScript
 - Vite
 - Tailwind CSS 4
 - shadcn-style components
-- Lucide icons
-- Recharts
+- Rust backend
+- Docker Compose / Portainer
+- Aptly REST API
+- shared repository-serving component
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md)
-- [Compatibility](docs/COMPATIBILITY.md)
-- [Deployment strategy](docs/DEPLOYMENT.md)
-- [Application updates](docs/UPDATES.md)
-- [Roadmap](docs/ROADMAP.md)
+- Architecture: docs/ARCHITECTURE.md
+- Compatibility: docs/COMPATIBILITY.md
+- Deployment: docs/DEPLOYMENT.md
+- Upgrades and data safety: docs/UPGRADES.md
+- Roadmap: docs/ROADMAP.md
 
 ## Design origin
 
-`tauri-ui` scaffolds upstream shadcn and Tauri rather than maintaining a large forked UI template. This repository follows the same principle: keep the UI close to upstream component conventions and put Aptly-specific behavior in our own application layers.
+The UI started from Tauri/shadcn conventions inspired by agmmnn/tauri-ui. The visual React layer remains reusable while the primary runtime moves to the web/Docker architecture.
 
-See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for attribution notes.
+See THIRD_PARTY_NOTICES.md for attribution notes.

@@ -128,7 +128,7 @@ export function SettingsPage({
           <CardHeader>
             <CardTitle className="text-base">Servidor Aptly</CardTitle>
             <CardDescription>
-              La primera matriz compatible apunta a Aptly 1.6.3. La comprobación real se hace desde el backend Rust.
+              La primera matriz compatible apunta a Aptly 1.6.3. Este panel todavía usa el puente Tauri del prototipo y será migrado al backend web.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -240,13 +240,13 @@ export function SettingsPage({
             </div>
 
             <div className="rounded-lg border bg-[hsl(var(--muted))]/35 p-3 text-xs text-[hsl(var(--muted-foreground))]">
-              En esta etapa se guarda localmente sólo la configuración no secreta. Contraseñas, tokens y valores de headers se mantienen únicamente en memoria hasta integrar almacenamiento seguro del sistema.
+              Esta pantalla pertenece al prototipo de transición. En la arquitectura Docker/web, la conexión interna a Aptly se administra desde el backend y los secretos no se guardan en localStorage.
             </div>
 
             {!isTauriRuntime() && (
               <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">
                 <CircleAlert className="mt-0.5 size-4 shrink-0" />
-                La prueba real de conexión requiere ejecutar la aplicación con Tauri. En la vista web de Vite sólo podés editar el perfil.
+                La prueba real actual requiere Tauri. Esto desaparecerá cuando terminemos el backend web.
               </div>
             )}
 
@@ -282,11 +282,13 @@ export function SettingsPage({
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Aplicación</CardTitle>
-              <CardDescription>Actualizaciones firmadas desde GitHub Releases se integrarán en la etapa de distribución.</CardDescription>
+              <CardTitle className="text-base">Despliegue</CardTitle>
+              <CardDescription>Las actualizaciones se realizan cambiando las imágenes del stack desde Docker o Portainer.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Button variant="outline" disabled className="w-full">Buscar actualizaciones</Button>
+              <SettingRow label="Auto-update" value="Desactivado" />
+              <SettingRow label="Actualización" value="Imagen elegida por el operador" />
+              <SettingRow label="Persistencia" value="Volúmenes separados de las imágenes" />
             </CardContent>
           </Card>
         </div>

@@ -1,91 +1,97 @@
 # Roadmap
 
-## M0 — UI baseline
+## M0 — UI and Aptly client prototype
 
-- Tauri 2 + React + TypeScript + Vite.
-- shadcn/`dashboard-01` visual direction via `tauri-ui` conventions.
-- Mock data and navigation for Aptly concepts.
+Completed baseline:
 
-## M1 — Connection and compatibility foundation
+- React/TypeScript/Vite/shadcn-style UI;
+- original Tauri wrapper;
+- Rust Aptly HTTP client;
+- GET /api/version handshake;
+- Aptly 1.6.3 compatibility target;
+- capability probes;
+- frontend and Rust CI.
 
-Status: **in progress**
+The Tauri runtime is now considered a prototype/transition layer, not the primary product architecture.
 
-Implemented baseline:
+## M1 — Web backend foundation
 
-- Rust-side HTTP client.
-- Connection profile UI.
-- `GET /api/version` handshake.
-- Official support target: Aptly 1.6.3.
-- Initial capability probes.
-- HTTP Basic, Bearer and custom-header authentication.
-- Timeouts and structured errors.
-- Real connection state in Settings/sidebar.
-- Rust unit tests for URL/version handling.
-- GitHub Actions frontend + Rust checks.
+- extract/reuse Aptly client logic outside Tauri commands;
+- add Rust HTTP backend;
+- make React call the backend over same-origin HTTP;
+- health/readiness endpoints for the Dashboard;
+- persistent Dashboard configuration;
+- remove the in-app updater concept;
+- keep Aptly compatibility enforcement in the backend.
 
-Remaining:
+## M2 — Docker / Portainer stack
 
-- secure OS-backed credential persistence;
-- reconnect/session restoration;
-- broader contract-test harness against disposable Aptly 1.6.3;
-- decide which capabilities are mandatory versus optional;
-- harden proxy/TLS diagnostics.
+- Dashboard image;
+- operator-selected APTLY_IMAGE;
+- Aptly internal network contract;
+- dashboard-data, aptly-data and backup-data persistence;
+- repo-server service;
+- no Docker socket;
+- Compose file usable directly in Portainer;
+- first end-to-end clean deployment.
 
-## M2 — Reference deployment documentation
+## M3 — Multi-repository public endpoints
 
-- Add optional `deploy/compose.yaml` only when backed by a responsibly chosen external Aptly image.
-- Keep it Docker Compose and Portainer friendly.
-- Do **not** publish or maintain our own Aptly image.
-- Persistent volumes.
-- Safe administrative API exposure.
-- Nginx Proxy Manager/reverse-proxy example.
-- Remote HTTPS/authentication documentation.
-- CI smoke test for the documented deployment where practical.
+- one Aptly instance with many repositories/publications;
+- hostname to Aptly publication-prefix metadata;
+- one repo-server serving many public domains;
+- endpoint verification;
+- Nginx Proxy Manager guidance without NPM API integration.
 
-## M3 — Real Aptly read path
+## M4 — Real Aptly read path
 
-- Dashboard metrics from Aptly.
-- List repositories, packages, mirrors, snapshots, publications and tasks.
-- Storage information.
-- Read-only diagnostic views.
+- repositories;
+- packages;
+- mirrors;
+- snapshots;
+- publications;
+- tasks;
+- storage;
+- signing-key information supported by Aptly.
 
-## M4 — Real Aptly write path
+## M5 — Real Aptly write path
 
-- Create/edit/delete repositories.
-- Package upload/import/remove.
-- Mirror create/update/filter.
-- Snapshot create/drop/diff/merge where supported.
-- Publish/update/switch/drop.
-- Destructive-action confirmations.
+- create/edit/delete repositories;
+- package upload/import/remove;
+- mirrors;
+- snapshots;
+- publications;
+- destructive-action confirmations.
 
-## M5 — Signing and publication
+## M6 — Signing and publication policy
 
-- GPG key discovery/import/create flows as supported.
-- Secure credential/passphrase handling on the client side.
-- Signed publication workflow.
-- Explicit testing → stable promotion policy support.
+- signing workflows supported by Aptly;
+- secure signing secret handling;
+- testing/stable workflow;
+- PASS may progress to Testing;
+- Stable requires explicit confirmation.
 
-## M6 — Compatibility expansion
+## M7 — Upgrade safety
 
-- Add additional Aptly releases to CI contract matrix.
-- Expand support only when tests pass.
-- Capability fallbacks for API differences where worthwhile.
-- Document unsupported/partial features clearly.
+- stack version manifest;
+- pre-upgrade backups;
+- upgrade lock;
+- Aptly-version migration checks;
+- failed-upgrade recovery;
+- configurable backup retention;
+- no supported downgrade after successful migration.
 
-## M7 — Application updater and distribution
+## M8 — Compatibility and releases
 
-- GitHub Actions CI.
-- Signed Tauri application releases.
-- Tauri updater plugin.
-- `latest.json` in GitHub Releases.
-- Settings → **Check for updates**.
-- Optional automatic background checks; user-controlled installation.
-- Linux packaging first.
-- Other desktop platforms after behavior is validated.
+- disposable Aptly API contract tests;
+- expand compatible Aptly versions only after CI validation;
+- versioned Dashboard container releases;
+- pinned example stack manifests;
+- release notes describing whether Aptly changes.
 
 ## Later
 
-- Multiple connection profiles.
-- External storage backends in the UI.
-- Advanced authenticated proxy integrations.
-- Multiple Aptly instances open at once.
+- optional external Aptly mode;
+- multiple Aptly instances;
+- alternative storage backends;
+- optional desktop wrapper if there is a concrete use case.

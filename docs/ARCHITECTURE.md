@@ -2,236 +2,226 @@
 
 ## Product boundary
 
-`aptly-dashboard` is a desktop client for Aptly. It is **not** a Docker manager and does not own the lifecycle of the Aptly server.
+Aptly Dashboard is a web administration layer for Aptly.
 
-The dashboard should work with any deployment that exposes a compatible Aptly REST API, regardless of whether Aptly runs:
+The project owns:
 
-- directly on a host;
-- under systemd;
-- in Docker/Podman;
-- in Portainer;
-- in a VM;
-- on a remote server.
+- the Dashboard frontend;
+- the Dashboard Rust backend;
+- compatibility checks;
+- endpoint/publication metadata;
+- the repository-serving integration;
+- upgrade orchestration and backup policy for the reference stack.
 
-The project may ship deployment examples, including Docker Compose, but those remain optional.
+The project does **not** own Aptly itself.
 
-## High-level design
+We do not fork, patch or publish a custom Aptly build/image.
 
-```text
-React / shadcn UI
-        │
-        │ typed Tauri commands
-        ▼
-Tauri / Rust backend
-        │
-        ├─ connection profiles
-        ├─ credentials / secret handling
-        ├─ HTTP timeouts and TLS policy
-        ├─ Aptly version + capability checks
-        └─ Aptly API client
+## Primary deployment
+
+~~~
+                    external reverse proxy
+                    (NPM, Caddy, nginx...)
+                              │
+                 ┌────────────┴────────────┐
+                 ▼                         ▼
+             dashboard                 repo-server
+                 │                         │
+                 │ Aptly REST API          │ published files
+                 ▼                         ▼
+               aptly ───────────────► aptly-data
                  │
-                 │ HTTP(S)
-                 ▼
-        Compatible Aptly REST API
-                 │
-                 └─ repositories / packages / mirrors /
-                    snapshots / publish / tasks / storage
-```
+                 └──────────────────► signing/data state
 
-## Why the Rust backend owns HTTP
+dashboard ────────────────────► dashboard-data
+upgrade workflow ─────────────► backup-data
+~~~
 
-The webview should not call Aptly directly.
+The normal user deployment is one Compose/Portainer stack with several containers, not one giant multi-process container.
 
-Using Rust as the transport layer avoids depending on browser CORS behavior and gives us a single location for:
+## Services
 
-- URL validation;
-- TLS handling;
-- authentication;
-- timeouts;
-- retries where safe;
-- response parsing;
-- Aptly version checks;
-- compatibility feature gates;
-- structured error messages.
+### dashboard
 
-Credentials must not be stored in browser `localStorage`.
+Our application image.
 
-## Connection profiles
+Responsibilities:
 
-A profile should contain non-secret metadata such as:
+- React UI;
+- Rust HTTP backend;
+- Aptly REST client;
+- version/capability checks;
+- repository/publication management;
+- public-endpoint metadata;
+- upgrade status and backup workflow;
+- authentication/session layer for the Dashboard itself.
 
-- profile name;
-- Aptly API base URL;
-- optional public repository URL;
-- authentication mode;
-- TLS verification policy;
-- user-facing notes.
+The production web UI talks only to the Dashboard backend.
 
-Potential authentication modes:
+### aptly
 
-- none;
-- HTTP Basic;
-- Bearer token;
-- custom header.
+An operator-selected image containing Aptly.
 
-Aptly itself does not provide application authentication for its REST API, so remote deployments should place it behind a suitable authenticated reverse proxy.
+Requirements are defined by an image contract, not by ownership of the image.
 
-Secrets should eventually use an OS-backed secure store from the Tauri side.
+The initial compatibility target is Aptly **1.6.3**.
 
-## Connection handshake
+The Dashboard always verifies the live server through GET /api/version and capability probes.
 
-Every new connection performs a handshake before normal features are enabled.
+### repo-server
 
-Minimum sequence:
+Serves Aptly's published repository tree read-only.
 
-1. normalize and validate the configured URL;
-2. request `GET /api/version`;
-3. parse the reported Aptly version;
-4. compare it against the compatibility policy;
-5. probe required endpoints/capabilities;
-6. return a structured connection status to the UI.
+One server can expose many repositories/publication prefixes.
 
-Example version response from Aptly:
+The planned implementation may use the same Aptly Dashboard image in a separate repo-server mode so the project ships one application image while keeping processes isolated.
 
-```json
-{"Version":"1.6.3"}
-```
+It must never modify Aptly's package/database state.
 
-The version is necessary but not sufficient. Feature availability should also be represented as capabilities.
+## One Aptly, many repositories
 
-## Capability model
+Aptly repositories, Aptly publications and public hostnames are separate concepts.
 
-The UI should not scatter version comparisons throughout components.
+Example:
 
-The backend should expose a capability object, for example:
+~~~
+local repository      publication prefix       public endpoint
+supra-stable          supralinux                repo.supralinux.com
+colegio               colegio                   repo.colegio.com
+my-app                my-app                    packages.example.com
+~~~
 
-```text
-AptlyCapabilities
-├─ repository_list
-├─ repository_edit
-├─ package_upload
-├─ mirror_edit
-├─ snapshot_diff
-├─ storage_usage
-├─ gpg_key_api
-├─ task_api
-└─ multi_signing_keys
-```
+A single Aptly instance may contain all of them.
 
-Pages and actions use capabilities, not hard-coded `if version >= ...` checks.
+Conceptually its published tree can look like:
 
-This lets us support patch releases and later Aptly versions without turning the frontend into a version matrix.
+~~~
+public/
+├── supralinux/
+│   ├── dists/
+│   └── pool/
+├── colegio/
+│   ├── dists/
+│   └── pool/
+└── my-app/
+    ├── dists/
+    └── pool/
+~~~
 
-## API boundary
+The Dashboard stores endpoint metadata that associates a hostname with a publication prefix.
 
-Normal repository operations use Aptly REST endpoints whenever available:
+The external reverse proxy only forwards the hostname to repo-server; it does not need a separate Aptly container for each repository.
 
-- repositories;
-- package search/upload/import/remove;
-- mirrors;
-- snapshots and diffs;
-- publishing;
-- tasks;
-- GPG key operations;
-- storage information.
+## Reverse proxy boundary
 
-The desktop application should not SSH into the server or run Aptly CLI commands remotely.
+TLS/DNS/public ingress stays outside the application stack.
 
-If a useful Aptly operation is CLI-only, it should initially be marked unsupported rather than introducing a generic remote-shell path. An explicit extension mechanism can be designed later if there is a strong use case.
+For example with Nginx Proxy Manager:
 
-## Error model
+~~~
+aptly.supralinux.com
+    → dashboard
 
-Errors returned to React should be structured:
+repo.supralinux.com
+    → repo-server
 
-```text
-kind
-message
-operation
-http_status?
-aptly_error?
-retryable
-technical_details?
-```
+repo.colegio.com
+    → repo-server
+~~~
 
-The normal UI shows a concise explanation. Technical details are available on demand.
+The Dashboard does not manage NPM and never needs NPM credentials.
 
-Network failures, authentication failures, incompatible versions and Aptly operation errors must be distinguishable.
+It may later generate configuration guidance and verify that configured public URLs are reachable and valid.
 
-## Security defaults
+## Aptly compatibility
 
-For a local Aptly deployment, binding the raw API to localhost is acceptable.
+Compatibility is determined by:
 
-For remote access:
+1. reported Aptly version;
+2. required endpoint/capability probes;
+3. automated compatibility tests for versions we officially support.
 
-- use HTTPS;
-- do not expose an unauthenticated raw Aptly API directly to the Internet;
-- place the API behind a reverse proxy or gateway with authentication;
-- keep repository HTTP exposure separate from administrative API exposure.
+Initial target: Aptly 1.6.3.
 
-The dashboard should support authenticated reverse proxies without requiring a special Aptly build.
+The UI must use backend capabilities rather than scattered frontend version comparisons.
 
-## Optional deployment assets
+## Aptly image contract
 
-The repository will provide a reference deployment under `deploy/`.
+The reference Compose stack will receive the Aptly image from configuration, for example:
 
-Proposed structure:
+~~~
+APTLY_IMAGE=<operator-selected image>
+~~~
 
-```text
-deploy/
-├── compose.yaml
-├── .env.example
-├── aptly/
-│   └── aptly.conf
-├── repo-server/
-│   └── default.conf
-└── README.md
-```
+The image must satisfy the documented runtime contract for the stack, including:
 
-The Compose stack is designed to be:
+- Aptly API reachable from the internal Docker network;
+- persistent Aptly root mounted outside the container filesystem;
+- published files stored in a persistent/shared location;
+- configured signing material persisted outside the ephemeral container;
+- a version compatible with the Dashboard release.
 
-- usable with `docker compose`;
-- pasteable/importable into Portainer with minimal changes;
-- based on explicit image tags;
-- persistent through named volumes;
-- free of host Docker-socket mounts;
-- configurable through environment variables.
+The exact provider/image can change without changing the Dashboard architecture.
 
-The dashboard itself does not start, stop or inspect this stack.
+## Persistent state
 
-## Published repository serving
+No important user state may depend on an ephemeral container layer.
 
-The administrative Aptly API and the published APT repository are separate concerns.
+Logical persistent areas:
 
-A reference Compose deployment may contain:
+~~~
+aptly-data
+dashboard-data
+backup-data
+~~~
 
-```text
-aptly
-  └─ REST API
+Signing-key storage belongs to the Aptly persistent backup scope, whether the selected image stores it inside the Aptly root or in a dedicated persistent path.
 
-repo-server
-  └─ read-only HTTP serving of the published repository tree
-```
+The repo-server receives only the published portion it needs, read-only where possible.
 
-Users with an existing nginx/Caddy/Traefik setup may ignore the included repository server and publish through their own infrastructure.
+## Updates
 
-## Compatibility boundary
+Docker/Portainer owns image deployment.
 
-Initial official target:
+The application does not self-update.
 
-- Aptly 1.6.3
+A stack release records at least:
 
-See `COMPATIBILITY.md` for the policy.
+~~~
+stack version
+dashboard image version
+expected/supported Aptly version
+dashboard data schema version
+~~~
 
-When adding support for another version, CI should run API contract tests against that version before the matrix is expanded.
+Dashboard-only image updates must not restart or migrate Aptly unnecessarily.
 
-## Deliberately deferred
+A stack release that changes Aptly version must run the pre-upgrade backup/recovery procedure defined in UPGRADES.md.
 
-- Docker lifecycle management from Tauri;
-- remote shell/SSH execution;
-- Kubernetes orchestration;
-- automatic DNS/reverse-proxy setup;
-- multi-user server component;
-- arbitrary command execution;
-- automatic public Internet exposure.
+## No supported downgrade path
 
-The first integration milestone is a reliable client connection to one compatible Aptly REST API.
+After an Aptly upgrade has completed successfully, the product does not promise a downgrade to an older Aptly version.
+
+This is separate from failed-upgrade recovery: if an upgrade fails before completion, the system may restore the pre-upgrade backup to protect user data.
+
+## Security
+
+- no Docker socket mounted into application containers;
+- no privileged containers;
+- Aptly REST API stays on the private Compose network by default;
+- external access to the Dashboard goes through HTTPS/authentication;
+- public APT repository content is separate from the administrative API;
+- destructive Aptly actions require explicit confirmation;
+- secrets never belong in frontend localStorage.
+
+## Current transition
+
+The current repository still contains the initial Tauri prototype and its Rust connection implementation.
+
+The next code refactor will:
+
+1. extract/reuse the Aptly client logic;
+2. expose it through a Rust web backend;
+3. make React call that backend;
+4. add the Docker stack;
+5. leave Tauri, if retained at all, as an optional future wrapper rather than the core runtime.

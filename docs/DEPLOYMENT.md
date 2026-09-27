@@ -1,123 +1,161 @@
-# Deployment strategy
+# Deployment
 
-## Principle
+## Primary model
 
-Aptly Dashboard does not require Docker and does not ship or manage its own Aptly distribution.
+Aptly Dashboard is distributed primarily as a Docker Compose / Portainer stack.
 
-It only requires access to a **compatible Aptly REST API**.
+~~~
+services:
+  dashboard
+  aptly
+  repo-server
+~~~
 
-Docker Compose is offered as one convenient deployment recipe, not as part of the desktop application's runtime.
+This is one product stack, but each responsibility stays in its own container.
 
-## Supported deployment styles
+## Image ownership
 
-The product should remain agnostic to where Aptly runs:
+The project publishes only Aptly Dashboard artifacts.
 
-1. native host installation;
-2. systemd service;
-3. Docker Compose;
-4. Portainer stack;
-5. Podman or another OCI runtime;
-6. remote server or VM.
+It does not maintain an Aptly image.
 
-The desktop UI behaves the same once the API profile is configured.
+The operator supplies the Aptly image through deployment configuration. The exact image is acceptable only if the running server passes the Dashboard's version/capability checks.
 
-## Aptly ownership
+Never use a floating latest tag in a documented production deployment.
 
-This project maintains **Aptly Dashboard**, not Aptly.
+Prefer an explicit tag and, when practical, an immutable digest.
 
-Therefore we do not:
+## Compose goals
 
-- fork Aptly;
-- publish a modified Aptly build;
-- maintain an `aptly-dashboard-aptly` container image;
-- silently patch the Aptly API;
-- require a particular container runtime.
+The reference deployment must work well in docker compose and Portainer Stacks.
 
-Compatibility is defined against upstream Aptly versions and API capabilities.
+Rules:
 
-Initial target: **Aptly 1.6.3**.
+- no Docker socket;
+- no privileged mode;
+- persistent volumes;
+- private internal network;
+- explicit image versions;
+- healthchecks;
+- restart policies;
+- environment-variable configuration;
+- no dependency on host Aptly installation;
+- no dependency on host Node/Rust toolchains.
 
-## Reference Compose
+## Reverse proxy
 
-The repository may provide an optional `deploy/compose.yaml` for users who want Docker or Portainer.
+The stack does not manage DNS or TLS.
 
-The Compose file should be understood as a reference topology:
+An external reverse proxy such as Nginx Proxy Manager can publish:
 
-```text
-compatible Aptly container
-       │
-       ├─ REST API
-       └─ persistent Aptly data
+~~~
+aptly.example.com  → dashboard
+repo.example.com   → repo-server
+repo2.example.com  → repo-server
+~~~
 
-optional repository HTTP server / user's existing proxy
-```
+Multiple public repository domains may target the same repo-server.
 
-It must not create a new Aptly distribution maintained by this project.
+The Dashboard keeps the logical association between hostname and Aptly publication prefix.
 
-Because Aptly does not currently provide a clearly maintained Docker Official Image for every release, the reference deployment must document exactly which external image it was tested with. The dashboard's support promise remains tied to the **reported Aptly version/API**, not to that image.
+## Multi-repository example
 
-If there is no external image we can responsibly recommend for the supported Aptly version, we should publish deployment guidance instead of pretending a questionable image is an official dependency.
+One Aptly service:
 
-## Compose design rules
+~~~
+aptly
+├── prefix: supralinux
+├── prefix: colegio
+└── prefix: my-app
+~~~
 
-- no Docker socket mount;
-- no privileged containers;
-- explicit image tag/digest in examples;
-- persistent named volumes;
-- healthchecks where the selected image supports them;
-- environment-variable overrides for ports and paths;
-- administrative API not exposed publicly by default;
-- published repository and administrative API treated separately.
+One repository server:
+
+~~~
+repo-server
+├── repo.supralinux.com  → supralinux
+├── repo.colegio.com     → colegio
+└── packages.example.com → my-app
+~~~
+
+No extra Aptly container is required when a new repository/domain is added.
+
+## Persistent data
+
+The deployment must persist at least:
+
+- Aptly database/package/publication state;
+- signing-key state used by Aptly;
+- Dashboard metadata/configuration;
+- upgrade backups.
+
+Deleting/recreating containers must not delete this state.
+
+Normal docker compose down guidance must avoid -v unless the user explicitly wants destructive reset.
+
+## Dashboard updates
+
+For a Dashboard-only release:
+
+~~~
+pull new dashboard image
+recreate dashboard-related containers
+reuse existing volumes
+leave Aptly data unchanged
+~~~
+
+The user/operator decides when to deploy the new image.
+
+There is no in-app updater.
+
+## Aptly version updates
+
+If a new supported stack release changes Aptly itself:
+
+1. stop/lock new administrative operations;
+2. create a pre-upgrade backup;
+3. record current versions;
+4. stop Aptly cleanly;
+5. deploy the new Aptly image;
+6. start and wait for health/readiness;
+7. verify /api/version;
+8. verify repositories/snapshots/publications;
+9. mark the upgrade successful.
+
+If validation fails, use failed-upgrade recovery from the pre-upgrade backup.
+
+After a successful migration there is no supported downgrade promise.
+
+See UPGRADES.md.
 
 ## Portainer
 
-Portainer is a first-class use case for deployment documentation.
+Portainer is a first-class deployment target.
 
-Avoid Compose tricks that require local preprocessing. A user should be able to paste/import the YAML, set the documented variables, and deploy it.
+The stack should expose important choices as environment variables, including eventually:
 
-The dashboard itself does not need Portainer credentials and does not manage the Portainer stack.
+~~~
+DASHBOARD_IMAGE
+APTLY_IMAGE
+APTLY_EXPECTED_VERSION
+backup retention/settings
+internal ports/paths required by the selected Aptly image
+~~~
 
-## Local deployment
+The Dashboard itself does not need Portainer credentials.
 
-For a local-only API:
+## Destructive reset
 
-```text
-127.0.0.1:<api-port> → Aptly API
-```
+A complete reset is intentionally separate from normal redeployment.
 
-The public repository endpoint is separate and can be exposed to the LAN or Internet as appropriate.
+It must clearly state that it removes:
 
-## Remote deployment
+- repositories;
+- packages;
+- snapshots;
+- publications;
+- signing state;
+- Dashboard metadata;
+- backups if explicitly selected.
 
-A raw Aptly API should not be exposed directly to the Internet. Aptly's own documentation notes that its REST API has no built-in authentication/protection and recommends putting it behind an HTTP proxy that adds HTTPS and authentication.
-
-Recommended shape:
-
-```text
-Aptly Dashboard
-      │
-      │ HTTPS + authentication
-      ▼
-reverse proxy / gateway
-      │
-      ▼
-Aptly API
-```
-
-The dashboard connection profile supports the credentials used by that proxy.
-
-The public APT repository URL remains independent from the administrative API URL.
-
-## What the app does not do
-
-The desktop application will not:
-
-- create containers;
-- stop/start containers;
-- assume Docker is installed;
-- require access to the Docker daemon;
-- manage Portainer;
-- manage a reverse proxy;
-- publish or maintain a custom Aptly image.
-
-This separation keeps the client useful in more environments and keeps responsibility clear: Aptly upstream owns Aptly; this project owns the dashboard.
+Normal image updates must never perform that reset.
