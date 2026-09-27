@@ -1,62 +1,24 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import {
   CheckCircle2,
-  CircleAlert,
   CircleX,
   Globe2,
   LoaderCircle,
   PlugZap,
+  ServerCog,
   ShieldCheck,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  isTauriRuntime,
+  getDashboardConfig,
   parseConnectionError,
   testAptlyConnection,
-  type AuthMode,
   type ConnectionError,
-  type ConnectionProfile,
   type ConnectionTestResult,
+  type DashboardConfig,
 } from "@/lib/aptly"
-
-const PROFILE_KEY = "aptly-dashboard-profile"
-
-const emptyProfile: ConnectionProfile = {
-  name: "Mi servidor Aptly",
-  baseUrl: "",
-  publicRepositoryUrl: "",
-  auth: {
-    mode: "none",
-    username: "",
-    password: "",
-    token: "",
-    headerName: "",
-    headerValue: "",
-  },
-}
-
-function loadProfile(): ConnectionProfile {
-  try {
-    const stored = localStorage.getItem(PROFILE_KEY)
-    if (!stored) return emptyProfile
-    const parsed = JSON.parse(stored) as Partial<ConnectionProfile>
-    return {
-      ...emptyProfile,
-      ...parsed,
-      auth: {
-        ...emptyProfile.auth,
-        ...(parsed.auth || {}),
-        password: "",
-        token: "",
-        headerValue: "",
-      },
-    }
-  } catch {
-    return emptyProfile
-  }
-}
 
 export function SettingsPage({
   connection,
@@ -65,43 +27,26 @@ export function SettingsPage({
   connection: ConnectionTestResult | null
   onConnected: (result: ConnectionTestResult | null) => void
 }) {
-  const [profile, setProfile] = useState<ConnectionProfile>(loadProfile)
+  const [config, setConfig] = useState<DashboardConfig | null>(null)
   const [testing, setTesting] = useState(false)
   const [error, setError] = useState<ConnectionError | null>(null)
   const [result, setResult] = useState<ConnectionTestResult | null>(connection)
 
   useEffect(() => {
-    const safeProfile: ConnectionProfile = {
-      ...profile,
-      auth: {
-        ...profile.auth,
-        password: "",
-        token: "",
-        headerValue: "",
-      },
-    }
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(safeProfile))
-  }, [profile])
+    getDashboardConfig()
+      .then(setConfig)
+      .catch((value) => setError(parseConnectionError(value)))
+  }, [])
 
   useEffect(() => {
     setResult(connection)
   }, [connection])
 
-  const setProfileField = (field: "name" | "baseUrl" | "publicRepositoryUrl", value: string) => {
-    setProfile((current) => ({ ...current, [field]: value }))
-    setError(null)
-  }
-
-  const setAuth = (patch: Partial<ConnectionProfile["auth"]>) => {
-    setProfile((current) => ({ ...current, auth: { ...current.auth, ...patch } }))
-    setError(null)
-  }
-
   const testConnection = async () => {
     setTesting(true)
     setError(null)
     try {
-      const next = await testAptlyConnection(profile)
+      const next = await testAptlyConnection()
       setResult(next)
       onConnected(next)
     } catch (value) {
@@ -119,148 +64,38 @@ export function SettingsPage({
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Configuración</h1>
         <p className="mt-1 text-sm text-[hsl(var(--muted-foreground))]">
-          Conectá Aptly Dashboard a una API de Aptly compatible.
+          Estado del Dashboard y del Aptly conectado dentro del stack.
         </p>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,.72fr)]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Servidor Aptly</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ServerCog className="size-4" /> Servidor Aptly
+            </CardTitle>
             <CardDescription>
-              La primera matriz compatible apunta a Aptly 1.6.3. Este panel todavía usa el puente Tauri del prototipo y será migrado al backend web.
+              La conexión se configura del lado del backend. El navegador nunca recibe credenciales de Aptly.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5">
-            <Field label="Nombre del perfil">
-              <input
-                value={profile.name}
-                onChange={(event) => setProfileField("name", event.target.value)}
-                className="field-input"
-                placeholder="Producción"
-              />
-            </Field>
-
-            <Field label="URL de la API">
-              <input
-                value={profile.baseUrl}
-                onChange={(event) => setProfileField("baseUrl", event.target.value)}
-                className="field-input"
-                placeholder="https://aptly.example.com"
-                spellCheck={false}
-              />
-              <p className="mt-1.5 text-xs text-[hsl(var(--muted-foreground))]">
-                Podés ingresar la raíz del servicio o una URL que termine en <code>/api</code>.
-              </p>
-            </Field>
-
-            <Field label="URL pública del repositorio (opcional)">
-              <input
-                value={profile.publicRepositoryUrl || ""}
-                onChange={(event) => setProfileField("publicRepositoryUrl", event.target.value)}
-                className="field-input"
-                placeholder="https://repo.example.com"
-                spellCheck={false}
-              />
-            </Field>
-
-            <div className="border-t pt-5">
-              <div className="mb-3 text-sm font-semibold">Autenticación</div>
-              <Field label="Método">
-                <select
-                  value={profile.auth.mode}
-                  onChange={(event) => setAuth({ mode: event.target.value as AuthMode })}
-                  className="field-input"
-                >
-                  <option value="none">Sin autenticación</option>
-                  <option value="basic">Basic Auth</option>
-                  <option value="bearer">Bearer token</option>
-                  <option value="header">Header personalizado</option>
-                </select>
-              </Field>
-
-              {profile.auth.mode === "basic" && (
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <Field label="Usuario">
-                    <input
-                      value={profile.auth.username || ""}
-                      onChange={(event) => setAuth({ username: event.target.value })}
-                      className="field-input"
-                      autoComplete="username"
-                    />
-                  </Field>
-                  <Field label="Contraseña">
-                    <input
-                      type="password"
-                      value={profile.auth.password || ""}
-                      onChange={(event) => setAuth({ password: event.target.value })}
-                      className="field-input"
-                      autoComplete="current-password"
-                    />
-                  </Field>
-                </div>
-              )}
-
-              {profile.auth.mode === "bearer" && (
-                <div className="mt-4">
-                  <Field label="Bearer token">
-                    <input
-                      type="password"
-                      value={profile.auth.token || ""}
-                      onChange={(event) => setAuth({ token: event.target.value })}
-                      className="field-input"
-                      autoComplete="off"
-                    />
-                  </Field>
-                </div>
-              )}
-
-              {profile.auth.mode === "header" && (
-                <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <Field label="Nombre del header">
-                    <input
-                      value={profile.auth.headerName || ""}
-                      onChange={(event) => setAuth({ headerName: event.target.value })}
-                      className="field-input"
-                      placeholder="X-API-Key"
-                      spellCheck={false}
-                    />
-                  </Field>
-                  <Field label="Valor">
-                    <input
-                      type="password"
-                      value={profile.auth.headerValue || ""}
-                      onChange={(event) => setAuth({ headerValue: event.target.value })}
-                      className="field-input"
-                      autoComplete="off"
-                    />
-                  </Field>
-                </div>
-              )}
-            </div>
+          <CardContent className="space-y-4">
+            <SettingRow label="Perfil" value={config?.profileName || "Cargando…"} />
+            <SettingRow label="API interna" value={config?.aptlyBaseUrl || "Cargando…"} />
+            <SettingRow label="Aptly esperado" value={config?.expectedAptlyVersion || "—"} />
+            <SettingRow label="Autenticación backend" value={config?.authMode || "—"} />
+            <SettingRow
+              label="Repositorio público"
+              value={config?.publicRepositoryUrl || "Se define por publicación/endpoint"}
+            />
 
             <div className="rounded-lg border bg-[hsl(var(--muted))]/35 p-3 text-xs text-[hsl(var(--muted-foreground))]">
-              Esta pantalla pertenece al prototipo de transición. En la arquitectura Docker/web, la conexión interna a Aptly se administra desde el backend y los secretos no se guardan en localStorage.
+              En el despliegue Docker normal, la API de Aptly permanece en la red privada del stack. Nginx Proxy Manager publica el Dashboard y los dominios de repositorios, no la API administrativa de Aptly.
             </div>
 
-            {!isTauriRuntime() && (
-              <div className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">
-                <CircleAlert className="mt-0.5 size-4 shrink-0" />
-                La prueba real actual requiere Tauri. Esto desaparecerá cuando terminemos el backend web.
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={testConnection} disabled={testing || !isTauriRuntime()}>
-                {testing ? <LoaderCircle className="size-4 animate-spin" /> : <PlugZap className="size-4" />}
-                {testing ? "Comprobando…" : "Probar conexión"}
-              </Button>
-              {result && (
-                <Button variant="outline" onClick={() => { setResult(null); onConnected(null) }}>
-                  Desconectar
-                </Button>
-              )}
-            </div>
+            <Button onClick={testConnection} disabled={testing}>
+              {testing ? <LoaderCircle className="size-4 animate-spin" /> : <PlugZap className="size-4" />}
+              {testing ? "Comprobando…" : "Comprobar Aptly ahora"}
+            </Button>
 
             {error && <ConnectionErrorCard error={error} />}
           </CardContent>
@@ -272,7 +107,7 @@ export function SettingsPage({
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Política de publicación</CardTitle>
-              <CardDescription>Regla local del dashboard para evitar promociones involuntarias.</CardDescription>
+              <CardDescription>Regla local del Dashboard para evitar promociones involuntarias.</CardDescription>
             </CardHeader>
             <CardContent>
               <SettingRow label="PASS" value="Publica sólo en Testing" />
@@ -283,12 +118,13 @@ export function SettingsPage({
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Despliegue</CardTitle>
-              <CardDescription>Las actualizaciones se realizan cambiando las imágenes del stack desde Docker o Portainer.</CardDescription>
+              <CardDescription>Las actualizaciones se realizan desde Docker o Portainer.</CardDescription>
             </CardHeader>
             <CardContent>
-              <SettingRow label="Auto-update" value="Desactivado" />
-              <SettingRow label="Actualización" value="Imagen elegida por el operador" />
-              <SettingRow label="Persistencia" value="Volúmenes separados de las imágenes" />
+              <SettingRow label="Dashboard" value={config ? `v${config.dashboardVersion}` : "—"} />
+              <SettingRow label="Auto-update" value="No" />
+              <SettingRow label="Actualización" value="Nueva imagen del stack" />
+              <SettingRow label="Datos" value="Volúmenes persistentes" />
             </CardContent>
           </Card>
         </div>
@@ -305,7 +141,7 @@ function ConnectionStatus({ result }: { result: ConnectionTestResult | null }) {
           <CardTitle className="flex items-center gap-2 text-base">
             <Globe2 className="size-4" /> Estado de conexión
           </CardTitle>
-          <CardDescription>No hay una conexión Aptly activa.</CardDescription>
+          <CardDescription>Aptly todavía no respondió correctamente.</CardDescription>
         </CardHeader>
       </Card>
     )
@@ -389,10 +225,6 @@ function ConnectionErrorCard({ error }: { error: ConnectionError }) {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><span className="mb-1.5 block text-xs font-medium">{label}</span>{children}</label>
-}
-
 function StatusCell({ label, value, good }: { label: string; value: string; good?: boolean }) {
   return (
     <div className="rounded-lg border p-3">
@@ -403,7 +235,12 @@ function StatusCell({ label, value, good }: { label: string; value: string; good
 }
 
 function SettingRow({ label, value }: { label: string; value: string }) {
-  return <div className="flex items-center justify-between border-b py-3 text-sm last:border-0"><span className="text-[hsl(var(--muted-foreground))]">{label}</span><span className="font-medium">{value}</span></div>
+  return (
+    <div className="flex items-start justify-between gap-4 border-b py-3 text-sm last:border-0">
+      <span className="text-[hsl(var(--muted-foreground))]">{label}</span>
+      <span className="ui-selectable break-all text-right font-medium">{value}</span>
+    </div>
+  )
 }
 
 function capabilityLabel(value: string) {

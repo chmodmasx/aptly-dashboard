@@ -12,13 +12,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Archive, Database, FileClock, HardDrive, Package, Plus, RadioTower, X } from "lucide-react"
 import { repositories } from "@/data/mock"
-import type { ConnectionTestResult } from "@/lib/aptly"
+import { getAptlyStatus, type ConnectionTestResult } from "@/lib/aptly"
 
 export default function App() {
   const [section, setSection] = useState<Section>("Dashboard")
   const [debugOpen, setDebugOpen] = useState(() => localStorage.getItem("supralinux-debug") !== "closed")
   const [quickCreate, setQuickCreate] = useState(false)
   const [connection, setConnection] = useState<ConnectionTestResult | null>(null)
+
+  useEffect(() => {
+    let active = true
+    getAptlyStatus()
+      .then((result) => {
+        if (active) setConnection(result)
+      })
+      .catch(() => {
+        if (active) setConnection(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     localStorage.setItem("supralinux-debug", debugOpen ? "open" : "closed")

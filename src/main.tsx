@@ -11,11 +11,3 @@ createRoot(document.getElementById("root")!).render(
     </ThemeProvider>
   </StrictMode>,
 )
-
-requestAnimationFrame(() => {
-  if ("__TAURI_INTERNALS__" in window) {
-    import("@tauri-apps/api/window")
-      .then(({ getCurrentWindow }) => getCurrentWindow().show())
-      .catch(() => undefined)
-  }
-})

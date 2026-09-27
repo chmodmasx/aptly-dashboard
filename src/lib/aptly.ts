@@ -1,23 +1,3 @@
-import { invoke } from "@tauri-apps/api/core"
-
-export type AuthMode = "none" | "basic" | "bearer" | "header"
-
-export interface AuthConfig {
-  mode: AuthMode
-  username?: string
-  password?: string
-  token?: string
-  headerName?: string
-  headerValue?: string
-}
-
-export interface ConnectionProfile {
-  name: string
-  baseUrl: string
-  publicRepositoryUrl?: string
-  auth: AuthConfig
-}
-
 export interface AptlyCapabilities {
   repositories: boolean
   mirrors: boolean
@@ -49,12 +29,50 @@ export interface ConnectionError {
   technicalDetails?: string
 }
 
-export function isTauriRuntime() {
-  return "__TAURI_INTERNALS__" in window
+export interface DashboardConfig {
+  dashboardVersion: string
+  profileName: string
+  aptlyBaseUrl: string
+  publicRepositoryUrl?: string
+  authMode: string
+  expectedAptlyVersion: string
 }
 
-export async function testAptlyConnection(profile: ConnectionProfile) {
-  return invoke<ConnectionTestResult>("test_aptly_connection", { profile })
+export async function getDashboardConfig() {
+  return requestJson<DashboardConfig>("/api/dashboard/config")
+}
+
+export async function getAptlyStatus() {
+  return requestJson<ConnectionTestResult>("/api/dashboard/aptly/status")
+}
+
+export async function testAptlyConnection() {
+  return requestJson<ConnectionTestResult>("/api/dashboard/aptly/test", {
+    method: "POST",
+  })
+}
+
+async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(input, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init?.headers || {}),
+    },
+  })
+
+  const payload = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    throw parseConnectionError(payload || {
+      kind: "http",
+      message: `El Dashboard respondió con HTTP ${response.status}.`,
+      operation: input,
+      httpStatus: response.status,
+    })
+  }
+
+  return payload as T
 }
 
 export function parseConnectionError(value: unknown): ConnectionError {
@@ -76,7 +94,7 @@ export function parseConnectionError(value: unknown): ConnectionError {
         return parseConnectionError(parsed)
       }
     } catch {
-      // Tauri can reject with a plain string.
+      // Plain network/runtime error.
     }
 
     return {
