@@ -48,9 +48,39 @@ jobs:
           docker run -d --name aptly-dashboard-ci -p 127.0.0.1:18080:8080 aptly-dashboard:ci
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:18080/api/dashboard/health; then
-              exit 0
+              break
             fi
             sleep 1
           done
-          docker logs aptly-dashboard-ci
-          exit 1
+          curl -fsS http://127.0.0.1:18080/api/dashboard/health
+      - name: Smoke-test multi-domain repo-server
+        run: |
+          mkdir -p /tmp/dashboard-state /tmp/aptly-root/public/supralinux/dists/stable
+          cat > /tmp/dashboard-state/state.json <<'JSON'
+          {
+            "schemaVersion": 1,
+            "publicEndpoints": [
+              {
+                "hostname": "repo.example.test",
+                "prefix": "supralinux",
+                "enabled": true
+              }
+            ]
+          }
+          JSON
+          printf 'Release smoke test\n' > /tmp/aptly-root/public/supralinux/dists/stable/Release
+          chmod -R a+rX /tmp/dashboard-state /tmp/aptly-root
+          docker run -d --name aptly-repo-ci \
+            -p 127.0.0.1:18081:8081 \
+            -v /tmp/dashboard-state:/data:ro \
+            -v /tmp/aptly-root:/aptly:ro \
+            aptly-dashboard:ci repo-server
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18081/__health; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS -H 'Host: repo.example.test' \
+            http://127.0.0.1:18081/dists/stable/Release \
+            | grep -F 'Release smoke test'

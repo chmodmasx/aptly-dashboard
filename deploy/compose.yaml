@@ -23,8 +23,34 @@ services:
     networks:
       - internal
       - proxy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/dashboard/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     depends_on:
       - aptly
+
+  repo-server:
+    image: ${DASHBOARD_IMAGE:?Set DASHBOARD_IMAGE to an Aptly Dashboard image}
+    command: ["repo-server"]
+    restart: unless-stopped
+    environment:
+      DASHBOARD_DATA_DIR: /data
+      REPO_SERVER_BIND: 0.0.0.0:8081
+      APTLY_PUBLIC_ROOT: ${APTLY_PUBLIC_ROOT:-/aptly/public}
+    volumes:
+      - dashboard-data:/data:ro
+      - aptly-data:/aptly:ro
+    networks:
+      - proxy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/__health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
 
   aptly:
     image: ${APTLY_IMAGE:?Set APTLY_IMAGE to a compatible Aptly image}

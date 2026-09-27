@@ -5,9 +5,10 @@ This directory defines the first stack skeleton for the Docker-first Aptly Dashb
 Current services:
 
 - dashboard: React UI + Rust backend;
-- aptly: operator-selected Aptly image.
+- aptly: operator-selected Aptly image;
+- repo-server: the same Dashboard image in a separate read-only serving mode.
 
-The repo-server service will be added when the multi-domain publication layer is implemented.
+The repo-server reads hostname → publication-prefix mappings from dashboard-data and serves files from the Aptly public tree.
 
 ## Important
 
@@ -57,4 +58,8 @@ on the shared proxy network.
 
 Do not expose the raw Aptly REST API through NPM.
 
-The public repository domains will later point to repo-server rather than dashboard.
+Public repository domains point to:
+
+    repo-server:8081
+
+on the same shared proxy network. All of them can target this single service; the Host header selects the stored Aptly publication prefix.

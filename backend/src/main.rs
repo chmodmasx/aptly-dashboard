@@ -1,6 +1,7 @@
 mod aptly;
 mod config;
 mod state;
+mod repo_server;
 
 use aptly::{test_connection, ConnectionError, ConnectionTestResult};
 use axum::{
@@ -58,6 +59,17 @@ async fn main() {
         )
         .init();
 
+    match std::env::args().nth(1).as_deref() {
+        None | Some("dashboard") => run_dashboard().await,
+        Some("repo-server") => repo_server::run().await,
+        Some(other) => {
+            eprintln!("modo desconocido: {other}. Usá 'dashboard' o 'repo-server'.");
+            std::process::exit(2);
+        }
+    }
+}
+
+async fn run_dashboard() {
     let config = AppConfig::from_env();
     let bind = config.bind.clone();
     let static_dir = PathBuf::from(&config.static_dir);

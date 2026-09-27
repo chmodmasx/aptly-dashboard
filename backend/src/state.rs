@@ -49,13 +49,8 @@ impl StateStore {
         fs::create_dir_all(data_dir).await?;
         let path = data_dir.join("state.json");
 
-        let state = match fs::read(&path).await {
-            Ok(bytes) => serde_json::from_slice::<DashboardState>(&bytes).map_err(|error| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("state.json inválido: {error}"),
-                )
-            })?,
+        let state = match read_state_file(data_dir).await {
+            Ok(state) => state,
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 let state = DashboardState::default();
                 persist_state(&path, &state).await?;
@@ -261,4 +256,28 @@ mod tests {
         assert_eq!(normalize_prefix("").unwrap(), ".");
         assert!(normalize_prefix("../secret").is_err());
     }
+}
+
+
+pub async fn read_state_file(data_dir: impl AsRef<Path>) -> io::Result<DashboardState> {
+    let path = data_dir.as_ref().join("state.json");
+    let bytes = fs::read(path).await?;
+    let state = serde_json::from_slice::<DashboardState>(&bytes).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("state.json inválido: {error}"),
+        )
+    })?;
+
+    if state.schema_version != STATE_SCHEMA_VERSION {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "schema de state.json no soportado: {} (esperado {})",
+                state.schema_version, STATE_SCHEMA_VERSION
+            ),
+        ));
+    }
+
+    Ok(state)
 }
